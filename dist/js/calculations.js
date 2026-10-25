@@ -21,3 +21,28 @@ export function percentile(value, arr) { const a=[...arr].filter(Number.isFinite
 export function quartiles(arr){const a=[...arr].filter(Number.isFinite).sort((x,y)=>x-y); const q=p=>a.length? a[Math.round((a.length-1)*p)]:null; return {p25:q(.25),median:q(.5),p75:q(.75)};}
 export function normalizedScore(values, weights){const total=Object.values(weights).reduce((a,b)=>a+(+b||0),0)||1; return Object.keys(weights).reduce((sum,k)=>sum+(+values[k]||0)*(+weights[k]||0)/total,0);}
 export function sensitivity(input){return [-20,-10,0,10,20].map(delta=>{const price=+(input.price*(1+delta/100)).toFixed(2); const model=revenueModel({...input,price});return {price,orders:model.requiredOrders,visits:model.visits};});}
+export function decisionGate(product, thresholds={signalMin:55, burdenMax:65}) {
+  const model = revenueModel(product);
+  const scores = product.scores || {};
+  const signal = Math.round(clamp(
+    (+scores.demand || 0) * .45 +
+    (+scores.competition || 0) * .35 +
+    (+scores.pricing || 0) * .20, 0, 100));
+  const trafficCoverage = model.visits && product.demand > 0 ? clamp(model.visits / product.demand * 100, 0, 100) : 100;
+  const competitionPressure = 100 - clamp(+scores.competition || 0, 0, 100);
+  const marginDrag = 100 - clamp((+product.margin || 0) * 100, 0, 100);
+  const burden = Math.round(clamp(trafficCoverage * .50 + competitionPressure * .30 + marginDrag * .20, 0, 100));
+  const passesSignal = signal >= thresholds.signalMin;
+  const passesBurden = burden <= thresholds.burdenMax;
+  const feasible = model.feasible && model.requiredOrders !== null;
+  const pass = feasible && passesSignal && passesBurden;
+  const lowEvidence = !String(product.confidence || '').toLowerCase().startsWith('high');
+  const status = !feasible ? 'NO-GO' : pass && lowEvidence ? 'GO — VALIDATE' : pass ? 'GO' : 'NO-GO';
+  const reasons = [];
+  if (!feasible) reasons.push('Contribution per order is not positive.');
+  if (!passesSignal) reasons.push(`Market signal is ${thresholds.signalMin - signal} points below the gate.`);
+  if (!passesBurden) reasons.push(`Execution burden is ${burden - thresholds.burdenMax} points above the gate.`);
+  if (pass && lowEvidence) reasons.push('The numeric gate passes, but the evidence is not yet high-confidence.');
+  if (pass && !lowEvidence) reasons.push('Both decision metrics pass with high-confidence evidence.');
+  return {status, pass, signal, burden, passesSignal, passesBurden, feasible, lowEvidence, trafficCoverage:Math.round(trafficCoverage), competitionPressure:Math.round(competitionPressure), marginDrag:Math.round(marginDrag), reasons};
+}
