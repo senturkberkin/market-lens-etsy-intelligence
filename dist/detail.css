@@ -1,0 +1,50 @@
+.detail-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 4px;
+  width: max-content;
+  max-width: 100%;
+  overflow: auto;
+  background: #e9eef1;
+  border-radius: 7px;
+}
+
+.detail-tabs button {
+  padding: 7px 11px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.detail-tabs button.active {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 1px 3px #1b2b3a18;
+  font-weight: 700;
+}
+
+.market-status {
+  padding: 3px 7px;
+  border-radius: 10px;
+  background: #2b2b2e;
+  color: #d6d6da;
+}
+
+.keyword-mode .input-bar {
+  grid-template-columns: 1.4fr 132px 185px 1fr 170px 112px;
+}
+
+@media (max-width: 1100px) {
+  .keyword-mode .input-bar {
+    grid-template-columns: 1fr 120px 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .keyword-mode .input-bar {
+    grid-template-columns: 1fr;
+  }
+}
