@@ -1,5 +1,5 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
-import {revenueOrders, revenueModel, normalizedScore, percentile, decisionGate, keywordOpportunityIndex} from '../dist/js/calculations.js';
+import {revenueOrders, revenueModel, normalizedScore, percentile, decisionGate, keywordOpportunityIndex, strictKeywordMetrics} from '../dist/js/calculations.js';
 test('revenue orders round up',()=>assert.equal(revenueOrders(1000,19),53));
 test('negative contribution is infeasible',()=>assert.equal(revenueModel({price:10,margin:.1,adSpend:0,targetRevenue:100,targetProfit:100,fixedCosts:20,conversion:.02,variableCosts:2}).feasible,false));
 test('profit model guards zero conversion',()=>assert.equal(revenueModel({price:20,margin:.8,adSpend:0,targetRevenue:100,targetProfit:20,fixedCosts:10,conversion:0,variableCosts:0}).visits,null));
@@ -19,3 +19,10 @@ test('keyword index rewards stronger demand and lower competition',()=>{
   const weak=keywordOpportunityIndex({demand:900,listings:16000,price:20});
   assert.ok(strong>weak);
 });
+test('strict keyword metrics are deterministic and bounded',()=>{
+  const a=strictKeywordMetrics({demand:4000,listings:2000,price:20,trend:8,evidence:60});
+  const b=strictKeywordMetrics({demand:4000,listings:2000,price:20,trend:8,evidence:60});
+  assert.deepEqual(a,b);
+  assert.ok(a.popularity>=0&&a.popularity<=100&&a.difficulty>=0&&a.difficulty<=100);
+});
+test('strict keyword metrics reject missing market evidence',()=>assert.equal(strictKeywordMetrics({demand:null,listings:null,price:null}).decision,'AWAITING DATA'));
