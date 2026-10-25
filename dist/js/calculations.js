@@ -52,17 +52,17 @@ export function keywordOpportunityIndex({demand, listings, price}) {
 export const ENGINE_VERSION = 'ML-1.0';
 export const STRICT_PRODUCT_GATE = Object.freeze({signalMin:55, burdenMax:65});
 export function strictKeywordMetrics({demand, listings, price, trend=0, evidence=45}) {
-  if (![demand,listings,price].every(Number.isFinite)) return {popularity:null,difficulty:null,opportunity:null,decision:'AWAITING DATA',trend:null};
+  if (![demand,listings,price].every(Number.isFinite)) return {marketPull:null,entryFriction:null,opportunity:null,decision:'AWAITING DATA',trend:null};
   const demandDepth = clamp(Math.log10(Math.max(1,demand))/4*100,0,100);
   const momentum = clamp(50 + trend*2.5,0,100);
   const commercialIntent = clamp(price*3.5,0,100);
-  const popularity = Math.round(demandDepth*.65 + momentum*.20 + commercialIntent*.15);
+  const marketPull = Math.round(demandDepth*.65 + momentum*.20 + commercialIntent*.15);
   const absoluteSupply = clamp(Math.log10(Math.max(1,listings))/4.5*100,0,100);
   const demandSupplyStress = clamp((listings/Math.max(1,demand))*22,0,100);
   const priceCrowding = clamp(78-price*2,0,100);
   const uncertaintyPenalty = 100-clamp(evidence,0,100);
-  const difficulty = Math.round(absoluteSupply*.45 + demandSupplyStress*.30 + priceCrowding*.15 + uncertaintyPenalty*.10);
-  const opportunity = Math.round(clamp(popularity*.58 + (100-difficulty)*.42,0,100));
-  const decision = popularity>=55 && difficulty<=50 ? 'GO' : popularity>=42 && difficulty<=65 ? 'WATCH' : 'NO-GO';
-  return {popularity,difficulty,opportunity,decision,trend:Math.round(trend),components:{demandDepth:Math.round(demandDepth),momentum:Math.round(momentum),commercialIntent:Math.round(commercialIntent),absoluteSupply:Math.round(absoluteSupply),demandSupplyStress:Math.round(demandSupplyStress),priceCrowding:Math.round(priceCrowding),uncertaintyPenalty:Math.round(uncertaintyPenalty)}};
+  const entryFriction = Math.round(absoluteSupply*.45 + demandSupplyStress*.30 + priceCrowding*.15 + uncertaintyPenalty*.10);
+  const opportunity = Math.round(clamp(marketPull*.58 + (100-entryFriction)*.42,0,100));
+  const decision = marketPull>=55 && entryFriction<=50 ? 'GO' : marketPull>=42 && entryFriction<=65 ? 'WATCH' : 'NO-GO';
+  return {marketPull,entryFriction,opportunity,decision,trend:Math.round(trend),components:{demandDepth:Math.round(demandDepth),momentum:Math.round(momentum),commercialIntent:Math.round(commercialIntent),absoluteSupply:Math.round(absoluteSupply),demandSupplyStress:Math.round(demandSupplyStress),priceCrowding:Math.round(priceCrowding),uncertaintyPenalty:Math.round(uncertaintyPenalty)}};
 }

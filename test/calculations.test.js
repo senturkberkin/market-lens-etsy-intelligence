@@ -23,6 +23,6 @@ test('strict keyword metrics are deterministic and bounded',()=>{
   const a=strictKeywordMetrics({demand:4000,listings:2000,price:20,trend:8,evidence:60});
   const b=strictKeywordMetrics({demand:4000,listings:2000,price:20,trend:8,evidence:60});
   assert.deepEqual(a,b);
-  assert.ok(a.popularity>=0&&a.popularity<=100&&a.difficulty>=0&&a.difficulty<=100);
+  assert.ok(a.marketPull>=0&&a.marketPull<=100&&a.entryFriction>=0&&a.entryFriction<=100);
 });
 test('strict keyword metrics reject missing market evidence',()=>assert.equal(strictKeywordMetrics({demand:null,listings:null,price:null}).decision,'AWAITING DATA'));
