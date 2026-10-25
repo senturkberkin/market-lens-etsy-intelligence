@@ -46,3 +46,9 @@ export function decisionGate(product, thresholds={signalMin:55, burdenMax:65}) {
   if (pass && !lowEvidence) reasons.push('Both decision metrics pass with high-confidence evidence.');
   return {status, pass, signal, burden, passesSignal, passesBurden, feasible, lowEvidence, trafficCoverage:Math.round(trafficCoverage), competitionPressure:Math.round(competitionPressure), marginDrag:Math.round(marginDrag), reasons};
 }
+export function keywordOpportunityIndex({demand, listings, price}) {
+  const demandScore = clamp(demand / 80, 0, 100);
+  const competitionOpening = 100 - clamp(listings / 250, 0, 100);
+  const pricePotential = clamp(price * 4, 0, 100);
+  return Math.round(demandScore * .50 + competitionOpening * .30 + pricePotential * .20);
+}
