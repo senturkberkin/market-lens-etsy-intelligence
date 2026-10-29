@@ -40,7 +40,11 @@ export default async function handler(req, res) {
   try {
     const upstream = await fetch(url, {headers:{'x-api-key':apiKey, accept:'application/json'}});
     const data = await upstream.json().catch(() => ({}));
-    if (!upstream.ok) return res.status(502).json({error:'Etsy provider request failed.', providerStatus:upstream.status});
+    if (!upstream.ok) return res.status(502).json({
+      error:'Etsy provider request failed.',
+      providerStatus:upstream.status,
+      providerMessage:String(data?.error || data?.message || '').slice(0, 300) || undefined
+    });
     const results = Array.isArray(data.results) ? data.results : [];
     const prices = results.map(asPrice).filter(Number.isFinite);
     const digitalSampleSize = results.filter(x => x.type === 'download').length;
