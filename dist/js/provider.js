@@ -28,6 +28,7 @@ export function normalizeEtsyObservation(payload) {
     listings:Number.isFinite(+payload.totalListings) ? +payload.totalListings : null,
     price:medianPrice,
     prices,
+    sample:Array.isArray(payload.sample) ? payload.sample : [],
     demand:null,
     trend:null,
     evidence:70,

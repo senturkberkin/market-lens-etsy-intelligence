@@ -47,13 +47,24 @@ export default async function handler(req, res) {
     });
     const results = Array.isArray(data.results) ? data.results : [];
     const prices = results.map(asPrice).filter(Number.isFinite);
-    const digitalSampleSize = results.filter(x => x.type === 'download').length;
+    const sample = results.map(x => ({
+      id:x.listing_id,
+      url:x.url || null,
+      title:String(x.title || ''),
+      tags:Array.isArray(x.tags) ? x.tags.filter(t => typeof t === 'string') : [],
+      listingType:x.listing_type || null,
+      price:asPrice(x),
+      favorites:Number.isFinite(x.num_favorers) ? x.num_favorers : null,
+      createdAt:Number.isFinite(x.original_creation_timestamp) ? x.original_creation_timestamp : null
+    }));
+    const digitalSampleSize = sample.filter(x => x.listingType === 'download').length;
     res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=3600');
     return res.status(200).json({
       keyword,
       market,
       totalListings:Number(data.count) || 0,
       prices,
+      sample,
       sampleSize:results.length,
       digitalSampleSize,
       fetchedAt:new Date().toISOString(),
