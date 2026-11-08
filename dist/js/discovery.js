@@ -34,6 +34,28 @@ function groupFor(phrase, seed) {
 }
 export const groupPhrase = (phrase,seed=phrase) => groupFor(phrase,seed);
 
+// A second, explicitly labelled query can surface digital evidence when a broad
+// physical search fills the entire first page. Its results are never combined
+// with the original query's supply observation.
+export function digitalFollowUpQuery(seed, sample) {
+  const query=String(seed||'').trim();
+  if(!query||query.length>72||!Array.isArray(sample)||!sample.length||
+     /\b(digital|download)\b/i.test(query)||sample.some(item=>item.listingType==='download'))return null;
+  return `${query} digital`;
+}
+
+export async function collectDiscoveryEvidence(seed, fetchObservation) {
+  const primary=await fetchObservation(seed);
+  const followUpQuery=digitalFollowUpQuery(seed,primary.sample);
+  if(!followUpQuery)return {primary,discovery:primary,followUpQuery:null,followUpFailed:false};
+  try {
+    const discovery=await fetchObservation(followUpQuery);
+    return {primary,discovery,followUpQuery,followUpFailed:false};
+  } catch {
+    return {primary,discovery:primary,followUpQuery,followUpFailed:true};
+  }
+}
+
 export function discoverKeywords(seed, sample) {
   const query=normalizePhrase(seed);
   if(!core(query).length||!Array.isArray(sample)||!sample.length)return [];
@@ -44,14 +66,14 @@ export function discoverKeywords(seed, sample) {
     // The phrase itself must retain a seed concept or a documented synonym.
     if(listingRelevance(seed,{title:phrase,tags:[]})==='irrelevant')return;
     const key=phrase;
-    const current=candidates.get(key)||{keyword:phrase,kind:'observed',origins:new Set(),listingIds:new Set(),match,group:groupFor(phrase,seed)};
+    const current=candidates.get(key)||{keyword:phrase,kind:'observed',origins:new Set(),listingIds:new Set(),listingTypes:new Set(),match,group:groupFor(phrase,seed)};
     current.origins.add(origin);
     if(listing?.id!=null)current.listingIds.add(String(listing.id));
+    if(listing?.listingType)current.listingTypes.add(listing.listingType);
     if(match==='exact')current.match='exact';
     candidates.set(key,current);
   };
   for(const listing of sample){
-    if(listing.listingType && listing.listingType!=='download')continue;
     const match=listingRelevance(seed,listing);
     if(match==='irrelevant')continue;
     for(const tag of (Array.isArray(listing.tags)?listing.tags:[]).slice(0,13))add(tag,'tag',listing,match);
@@ -72,10 +94,10 @@ export function discoverKeywords(seed, sample) {
     const index=words.findIndex(w=>equivalent(replacement,w));
     const phrase=words.map((w,i)=>i===index?replacement:w).join(' ');
     if(phrase!==query&&!candidates.has(phrase)&&!generated.some(x=>x.keyword===phrase))
-      generated.push({keyword:phrase,kind:'hypothesis',origins:[],listingIds:[],match:'semantic',group:groupFor(phrase,seed),basis:item.keyword});
+      generated.push({keyword:phrase,kind:'hypothesis',origins:[],listingIds:[],listingTypes:[],match:'semantic',group:groupFor(phrase,seed),basis:item.keyword});
     if(generated.length>=8)break;
   }
-  return [...observed.map(x=>({...x,origins:[...x.origins],listingIds:[...x.listingIds]})),...generated];
+  return [...observed.map(x=>({...x,origins:[...x.origins],listingIds:[...x.listingIds],listingTypes:[...x.listingTypes]})),...generated];
 }
 
 export function groupDiscovered(candidates){

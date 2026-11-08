@@ -32,9 +32,11 @@ The keyword report allows manual research entry. Records persist in browser stor
 
 ## Keyword discovery
 
-The user enters one seed without selecting a category. For each returned digital listing, `listingRelevance` first tests whether every non-stopword seed token occurs exactly in its title or tags. If that fails, it accepts deterministic synonyms from a small documented dictionary (for example, mom/mother and planner/organizer). Unfamiliar topics still work through exact tokens. The discovery module extracts 2–6 token tags and short title windows, retains only phrases related to the seed, normalizes case/punctuation/simple plurals, and deduplicates by normalized phrase. It groups phrases by a transparent buyer-need, audience, and product-format vocabulary; unmatched words fall back to general or unspecified labels. Synonym substitutions are labelled generated hypotheses. The original observed phrase is never relabelled as generated.
+The user enters one seed without selecting a category. For each returned listing, physical or digital, `listingRelevance` first tests whether every non-stopword seed token occurs exactly in its title or tags. If that fails, it accepts deterministic synonyms from a small documented dictionary (for example, mom/mother and planner/organizer). Unfamiliar topics still work through exact tokens. The discovery module extracts 2–6 token tags and short title windows, retains only phrases related to the seed, normalizes case/punctuation/simple plurals, and deduplicates by normalized phrase. It groups phrases by a transparent buyer-need, audience, and product-format vocabulary; unmatched words fall back to general or unspecified labels. Synonym substitutions are labelled generated hypotheses. The original observed phrase is never relabelled as generated.
 
 Counts report how many distinct sampled listings contained a phrase. The API returns at most 100 relevance-ranked results, so this is neither market prevalence nor search volume. A candidate is not assessed by the opportunity engine until the user investigates it with its own Etsy query. No discovery frequency enters EXPLORE/VALIDATE/AVOID logic.
+
+When the original sample contains no digital listings, the app can run a separate generated query by appending “digital.” It labels this as a search probe and displays its sample independently. The original physical listing evidence remains visible. The opportunity engine remains specific to digital product hypotheses; its decision is not a verdict about physical products.
 
 ## Automatic product hypotheses
 
