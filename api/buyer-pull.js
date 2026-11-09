@@ -1,6 +1,6 @@
 // Buyer activity is evidenced by dated reviews of relevant sampled listings.
 // Sales numbers supplied by Alura remain estimates and are labelled separately.
-import {requireProtectedPreview} from './research-access.js';
+import {requireVercelAccess} from './research-access.js';
 
 const BASE='https://api.alura.io/v1';
 const count=value=>Number.isSafeInteger(value)&&value>=0?value:null;
@@ -80,7 +80,7 @@ export async function fetchBuyerPull(seed,{apiKey,fetchImpl=fetch,now=new Date()
 
 export default async function handler(req,res){
   if(req.method!=='GET')return res.status(405).json({error:'Method not allowed.'});
-  if(!requireProtectedPreview(req,res))return;
+  if(!requireVercelAccess(req,res))return;
   const seed=String(req.query?.keyword||'').trim();
   if(seed.length<2||seed.length>80)return res.status(400).json({error:'Enter a keyword of 2–80 characters.'});
   try{

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import handler,{fetchFreeMetrics,normalizeKeywordMetrics} from '../api/keyword-metrics.js';
+import {requireVercelAccess} from '../api/research-access.js';
 import {readFile} from 'node:fs/promises';
 
 const lookup={data:[{id:'88123',keyword:'dog collar',volume:{etsy_monthly:1200},competition:{competing_listings:4000},as_of:'2026-11-01T00:00:00Z'}],pending:[]};
@@ -77,14 +78,32 @@ test('protected Preview endpoint reports missing provider configuration',async()
 });
 
 test('keyword endpoint fails closed outside protected Preview',async()=>{
-  const previous=process.env.VERCEL_ENV;
+  const previous=process.env.VERCEL_ENV,previousFlag=process.env.ZETY_VERCEL_AUTH_ALL;
   process.env.VERCEL_ENV='production';
+  delete process.env.ZETY_VERCEL_AUTH_ALL;
   const res={headers:{},setHeader(name,value){this.headers[name]=value;return this},status(code){this.statusCode=code;return this},json(value){this.body=value;return this},end(){return this}};
   try{
     await handler({method:'GET',query:{keyword:'dog collar'},headers:{host:'market-lens-etsy-intelligence.vercel.app'}},res);
     assert.equal(res.statusCode,503);
     assert.match(res.body.error,/unavailable on this deployment/);
-  }finally{if(previous===undefined)delete process.env.VERCEL_ENV;else process.env.VERCEL_ENV=previous}
+  }finally{
+    if(previous===undefined)delete process.env.VERCEL_ENV;else process.env.VERCEL_ENV=previous;
+    if(previousFlag===undefined)delete process.env.ZETY_VERCEL_AUTH_ALL;else process.env.ZETY_VERCEL_AUTH_ALL=previousFlag;
+  }
+});
+
+test('production needs explicit protection flag and same-origin Vercel host',()=>{
+  const previous=process.env.VERCEL_ENV,previousFlag=process.env.ZETY_VERCEL_AUTH_ALL;
+  process.env.VERCEL_ENV='production';process.env.ZETY_VERCEL_AUTH_ALL='1';
+  const res={status(code){this.statusCode=code;return this},json(value){this.body=value;return this}};
+  try{
+    assert.equal(requireVercelAccess({headers:{host:'market-lens-etsy-intelligence.vercel.app'}},res),true);
+    assert.equal(requireVercelAccess({headers:{host:'market-lens-etsy-intelligence.vercel.app',origin:'https://elsewhere.example'}},res),false);
+    assert.equal(res.statusCode,403);
+  }finally{
+    if(previous===undefined)delete process.env.VERCEL_ENV;else process.env.VERCEL_ENV=previous;
+    if(previousFlag===undefined)delete process.env.ZETY_VERCEL_AUTH_ALL;else process.env.ZETY_VERCEL_AUTH_ALL=previousFlag;
+  }
 });
 
 test('primary page opens the metric workflow; prior research remains available',async()=>{
@@ -92,7 +111,7 @@ test('primary page opens the metric workflow; prior research remains available',
   const legacy=await readFile(new URL('../dist/legacy.html',import.meta.url),'utf8');
   assert.match(index,/js\/metrics\.js/);
   assert.match(index,/Research a keyword/);
-  assert.match(index,/Vercel account/);
+  assert.match(index,/Sign in with Vercel/);
   assert.doesNotMatch(index,/id="access-key"/);
   assert.match(legacy,/js\/app\.js/);
 });
