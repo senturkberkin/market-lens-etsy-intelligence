@@ -16,14 +16,14 @@ The primary page now produces a combined report. An Alura lookup is optional and
 | Listing attributes | Documented in Etsy listing schema, not currently used in the report | Availability and usefulness for this sample remain unverified. |
 | Shop-wide transaction count | Documented Etsy shop field, not queried | Cumulative shop-wide activity, not listing-level sales. |
 | Listing-level sales | Not available in the current public Etsy listing response | Unknown. No sales estimate is inferred from age or favorites. |
-| Dated listing reviews | Etsy API endpoint documented, not yet integrated or live-verified here; optional Alura buyer check exists | A review is purchase-linked but not a purchase date or a count of all sales. The Alura buyer path has not passed a live check after its last API-field fix. |
+| Dated listing reviews | Etsy API endpoint documented and integrated as an optional check for up to three relevant digital listings; not yet live-verified here. Optional Alura buyer check also exists. | A review is purchase-linked but not a purchase date or a count of all sales. The Alura buyer path has not passed a live check after its last API-field fix. |
 | Historical search trends, conversion, purchase totals | Not returned by the current Alura keyword endpoint | Unknown in this workflow. Do not label the current average as sustained demand. |
 
 Live Etsy spot checks before implementation: `digital poster` returned 3,068,440 broad matches and 97 downloadable listings in the first 100; `ADHD planner` returned 90,926 and 98/100; `wedding budget spreadsheet` returned 11,355 and 100/100. These are search-result samples, **not** verified counts of relevant competitors. The integrated report filters each sample by exact token or a documented synonym before showing a relevant digital count. No additional Alura calls were made for these markets because the owner set a zero-credit limit.
 
 ## Research conclusion rules
 
-The report presents Alura search interest only when an exact matching keyword measurement exists. It filters Etsy's returned sample to relevant downloadable listings, keeps currencies separate, and links the listings underlying each proposed concept. A phrase appearing in titles or tags indicates seller wording, not buyer demand. A possible difference is a hypothesis based on sampled text; the buyer and product functionality still need checking. Purchase activity remains unverified until dated purchase-linked evidence is actually returned. There is no opportunity score or automatic go/no-go decision.
+The report presents Alura search interest only when an exact matching keyword measurement exists. It filters Etsy's returned sample to relevant downloadable listings, keeps currencies separate, and links the listings underlying each proposed concept. A phrase appearing in titles or tags indicates seller wording, not buyer demand. A possible difference is a hypothesis based on sampled text; the buyer and product functionality still need checking. Purchase activity remains unverified until dated purchase-linked evidence is actually returned. The optional Etsy review check uses no Alura credits and preserves unknown on provider failure. There is no opportunity score or automatic go/no-go decision.
 
 ## Current limits
 
