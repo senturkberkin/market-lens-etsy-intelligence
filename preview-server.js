@@ -19,6 +19,15 @@ http.createServer(async(req,res)=>{
     res.end(JSON.stringify({query:keyword,exact:rows[0],related:rows.slice(1),source:'Local test fixture',sourceUrl:'',fetchedAt:new Date().toISOString(),searchPeriod:'test fixture',searchMethod:'synthetic data for UI testing',competitionMethod:'synthetic data for UI testing',geography:'test fixture',validatedAgainstEtsy:false,creditsUsed:'No provider credits used in local fixture.'}));
     return;
   }
+  if(url.pathname==='/api/buyer-pull'){
+    const keyword=(url.searchParams.get('keyword')||'').trim();
+    res.setHeader('Content-Type','application/json');
+    res.end(JSON.stringify({query:keyword,status:'sampled',sampleSize:1,listingsWithRecentReviews:1,
+      reviewPeriodStart:'2026-08-11',checkedAt:new Date().toISOString(),source:'Local test fixture',
+      method:'Synthetic UI fixture only; no real purchases or provider credits.',
+      evidence:[{listingId:'123456789',title:`${keyword} sample listing`,url:'https://www.etsy.com/listing/123456789',estimatedSalesLastMonth:12,reviewCount90d:3,latestReviewAt:'2026-10-20T00:00:00Z'}]}));
+    return;
+  }
   if(url.pathname==='/api/etsy-keyword'){
     const keyword=url.searchParams.get('keyword')||'';
     res.setHeader('Content-Type','application/json');
