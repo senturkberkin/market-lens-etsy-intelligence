@@ -7,7 +7,7 @@ const ok=body=>({ok:true,status:200,json:async()=>body});
 const products={data:[
   {id:'123',title:'Custom dog collar with name',tags:['pet gift'],sales:{est_last_month:18},as_of:'2026-11-01'},
   {id:'456',title:'Cat harness',tags:['dog collar handmade'],sales:{est_last_month:null}},
-  {id:'789',title:'Collar for dog',tags:['pet accessory'],sales:{est_last_month:99}},
+  {id:'789',title:'Collar for dog',tags:['pet accessory'],sales:{est_last_month:null}},
   {id:'999',title:'Dog collar leather',tags:[],sales:{est_last_month:4}}
 ]};
 
@@ -20,10 +20,12 @@ test('reviewed relevant listings prove some purchases, not actual sales totals',
   const result=await fetchBuyerPull('dog collar',{apiKey:'secret',now:new Date('2026-11-09T00:00:00Z'),fetchImpl:async url=>{calls.push(String(url));return ok(responses.shift())}});
   assert.equal(calls.length,5);
   assert.match(calls[1],/\/research\/products\?q=dog\+collar/);
+  assert.match(calls[1],/fields=title%2Csales.est_last_month/);
+  assert.ok(!calls[1].includes('tags'));
   assert.ok(calls.slice(2).every(url=>url.includes('from=2026-08-11&limit=1')));
   assert.equal(result.sampleSize,3);
   assert.equal(result.listingsWithRecentReviews,1);
-  assert.deepEqual(result.evidence.map(row=>row.listingId),['123','456','789']);
+  assert.deepEqual(result.evidence.map(row=>row.listingId),['123','789','999']);
   assert.equal(result.evidence[0].url,'https://www.etsy.com/listing/123');
   assert.equal(result.evidence[0].reviewCount90d,5);
   assert.equal(result.evidence[0].estimatedSalesLastMonth,18);

@@ -7,8 +7,7 @@ const count=value=>Number.isSafeInteger(value)&&value>=0?value:null;
 const words=value=>String(value||'').toLocaleLowerCase('en-US').match(/[\p{L}\p{N}]+/gu)||[];
 const relevant=(seed,product)=>{
   const tokens=words(seed);
-  const fields=[product.title,...(Array.isArray(product.tags)?product.tags:[])];
-  return tokens.length>0&&fields.some(field=>tokens.every(token=>words(field).includes(token)));
+  return tokens.length>0&&tokens.every(token=>words(product.title).includes(token));
 };
 
 export function normalizeBuyerPull(seed,products,reviewPages,from,checkedAt=new Date().toISOString()){
@@ -53,7 +52,11 @@ export async function fetchBuyerPull(seed,{apiKey,fetchImpl=fetch,now=new Date()
     if(response.status===401||response.status===403)throw new Error('Buyer activity provider access was rejected.');
     if(response.status===402)throw new Error('Included Free-plan credits are exhausted.');
     if(response.status===429)throw new Error('Buyer activity provider rate limit reached.');
-    if(!response.ok)throw new Error(`Buyer activity provider returned ${response.status}.`);
+    if(!response.ok){
+      const problem=await response.json().catch(()=>({}));
+      const detail=response.status===400&&typeof problem.detail==='string'?problem.detail.slice(0,180):null;
+      throw new Error(detail?`Buyer activity provider rejected the request: ${detail}`:`Buyer activity provider returned ${response.status}.`);
+    }
     return response.json();
   };
   const usage=await request('/usage');
@@ -63,7 +66,7 @@ export async function fetchBuyerPull(seed,{apiKey,fetchImpl=fetch,now=new Date()
   const search=new URL(`${BASE}/research/products`);
   search.searchParams.set('q',seed);
   search.searchParams.set('limit','10');
-  search.searchParams.set('fields','id,title,url,tags,sales.est_last_month,as_of');
+  search.searchParams.set('fields','title,sales.est_last_month');
   const products=await request(`/research/products${search.search}`);
   if(!Array.isArray(products?.data))throw new Error('Provider response has no product evidence.');
   const sample=products.data.filter(product=>relevant(seed,product)).slice(0,3);
