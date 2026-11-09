@@ -2,7 +2,6 @@ const form=document.querySelector('#search-form');
 const input=document.querySelector('#keyword');
 const result=document.querySelector('#result');
 const submit=form.querySelector('button');
-const access=document.querySelector('#access-key');
 const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const number=value=>new Intl.NumberFormat('en-US').format(value);
 
@@ -33,7 +32,7 @@ async function checkBuyerPull(keyword,button){
   try{
     const url=new URL(`${base}/api/buyer-pull`);
     url.searchParams.set('keyword',keyword);
-    const response=await fetch(url,{headers:{accept:'application/json','x-research-token':access.value}});
+    const response=await fetch(url,{headers:{accept:'application/json'}});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||`Provider returned ${response.status}.`);
     container.innerHTML=buyerPullView(data);
@@ -51,7 +50,7 @@ async function research(keyword){
   try{
     const url=new URL(`${base}/api/keyword-metrics`);
     url.searchParams.set('keyword',keyword);
-    const response=await fetch(url,{headers:{accept:'application/json','x-research-token':access.value}});
+    const response=await fetch(url,{headers:{accept:'application/json'}});
     const data=await response.json().catch(()=>({}));
     if(!response.ok)throw new Error(data.error||`Provider returned ${response.status}.`);
     result.innerHTML=metricView(data);
@@ -62,4 +61,4 @@ async function research(keyword){
 form.addEventListener('submit',event=>{event.preventDefault();research(input.value.trim())});
 result.addEventListener('click',event=>{const keyword=event.target.closest('[data-keyword]');if(keyword){research(keyword.dataset.keyword);return}const pull=event.target.closest('[data-check-pull]');if(pull)checkBuyerPull(pull.dataset.checkPull,pull)});
 const initial=new URLSearchParams(location.search).get('keyword');
-if(initial){input.value=initial;result.innerHTML='<p class="empty">Enter your personal access key, then select Research.</p>'}
+if(initial){input.value=initial;result.innerHTML='<p class="empty">Select Research to retrieve current measurements.</p>'}

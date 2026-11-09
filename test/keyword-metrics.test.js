@@ -60,32 +60,31 @@ test('pending keywords do not call the related endpoint',async()=>{
   assert.equal(result.exact,null);
 });
 
-test('public endpoint declines without credentials and never exposes a secret',async()=>{
-  const previousId=process.env.ALURA_API_KEY, previousToken=process.env.ZETY_ACCESS_TOKEN;
-  process.env.ZETY_ACCESS_TOKEN='test-token-with-at-least-24-characters';
+test('protected Preview endpoint reports missing provider configuration',async()=>{
+  const previousId=process.env.ALURA_API_KEY, previousEnv=process.env.VERCEL_ENV;
+  process.env.VERCEL_ENV='preview';
   delete process.env.ALURA_API_KEY;
   const headers={};
   const res={setHeader(name,value){headers[name]=value;return this},status(code){this.statusCode=code;return this},json(value){this.body=value;return this},end(){return this}};
   try{
-    await handler({method:'GET',query:{keyword:'dog collar'},headers:{origin:'https://senturkberkin.github.io','x-research-token':process.env.ZETY_ACCESS_TOKEN}},res);
+    await handler({method:'GET',query:{keyword:'dog collar'},headers:{host:'market-lens-etsy-intelligence-abc.vercel.app'}},res);
     assert.equal(res.statusCode,503);
-    assert.equal(headers['Access-Control-Allow-Origin'],'https://senturkberkin.github.io');
     assert.match(res.body.error,/not configured/);
   }finally{
     if(previousId===undefined)delete process.env.ALURA_API_KEY;else process.env.ALURA_API_KEY=previousId;
-    if(previousToken===undefined)delete process.env.ZETY_ACCESS_TOKEN;else process.env.ZETY_ACCESS_TOKEN=previousToken;
+    if(previousEnv===undefined)delete process.env.VERCEL_ENV;else process.env.VERCEL_ENV=previousEnv;
   }
 });
 
-test('keyword endpoint rejects an invalid personal access key before provider calls',async()=>{
-  const previous=process.env.ZETY_ACCESS_TOKEN;
-  process.env.ZETY_ACCESS_TOKEN='test-token-with-at-least-24-characters';
+test('keyword endpoint fails closed outside protected Preview',async()=>{
+  const previous=process.env.VERCEL_ENV;
+  process.env.VERCEL_ENV='production';
   const res={headers:{},setHeader(name,value){this.headers[name]=value;return this},status(code){this.statusCode=code;return this},json(value){this.body=value;return this},end(){return this}};
   try{
-    await handler({method:'GET',query:{keyword:'dog collar'},headers:{origin:'https://senturkberkin.github.io','x-research-token':'wrong'}},res);
-    assert.equal(res.statusCode,401);
-    assert.match(res.body.error,/rejected/);
-  }finally{if(previous===undefined)delete process.env.ZETY_ACCESS_TOKEN;else process.env.ZETY_ACCESS_TOKEN=previous}
+    await handler({method:'GET',query:{keyword:'dog collar'},headers:{host:'market-lens-etsy-intelligence.vercel.app'}},res);
+    assert.equal(res.statusCode,503);
+    assert.match(res.body.error,/unavailable on this deployment/);
+  }finally{if(previous===undefined)delete process.env.VERCEL_ENV;else process.env.VERCEL_ENV=previous}
 });
 
 test('primary page opens the metric workflow; prior research remains available',async()=>{
@@ -93,7 +92,8 @@ test('primary page opens the metric workflow; prior research remains available',
   const legacy=await readFile(new URL('../dist/legacy.html',import.meta.url),'utf8');
   assert.match(index,/js\/metrics\.js/);
   assert.match(index,/Research a keyword/);
-  assert.match(index,/Free plan/);
+  assert.match(index,/Vercel account/);
+  assert.doesNotMatch(index,/id="access-key"/);
   assert.match(legacy,/js\/app\.js/);
 });
 

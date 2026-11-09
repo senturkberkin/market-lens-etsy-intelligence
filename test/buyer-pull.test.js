@@ -50,14 +50,14 @@ test('Free plan and 13 included credits are mandatory before paid endpoints',asy
   }
 });
 
-test('buyer activity endpoint refuses invalid token',async()=>{
-  const previous=process.env.ZETY_ACCESS_TOKEN;
-  process.env.ZETY_ACCESS_TOKEN='test-token-with-at-least-24-characters';
+test('buyer activity endpoint refuses requests outside protected Preview',async()=>{
+  const previous=process.env.VERCEL_ENV;
+  process.env.VERCEL_ENV='preview';
   const res={setHeader(){return this},status(code){this.statusCode=code;return this},json(value){this.body=value;return this},end(){return this}};
   try{
-    await handler({method:'GET',query:{keyword:'dog collar'},headers:{'x-research-token':'wrong'}},res);
-    assert.equal(res.statusCode,401);
-  }finally{if(previous===undefined)delete process.env.ZETY_ACCESS_TOKEN;else process.env.ZETY_ACCESS_TOKEN=previous}
+    await handler({method:'GET',query:{keyword:'dog collar'},headers:{host:'preview.vercel.app',origin:'https://other.example'}},res);
+    assert.equal(res.statusCode,403);
+  }finally{if(previous===undefined)delete process.env.VERCEL_ENV;else process.env.VERCEL_ENV=previous}
 });
 
 test('primary page provides separate buyer check and labels estimates',async()=>{

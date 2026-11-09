@@ -1,9 +1,8 @@
 // Buyer activity is evidenced by dated reviews of relevant sampled listings.
 // Sales numbers supplied by Alura remain estimates and are labelled separately.
-import {timingSafeEqual} from 'node:crypto';
+import {requireProtectedPreview} from './research-access.js';
 
 const BASE='https://api.alura.io/v1';
-const ORIGINS=new Set(['https://senturkberkin.github.io','http://localhost:4173','http://127.0.0.1:4173','http://127.0.0.1:4174']);
 const count=value=>Number.isSafeInteger(value)&&value>=0?value:null;
 const words=value=>String(value||'').toLocaleLowerCase('en-US').match(/[\p{L}\p{N}]+/gu)||[];
 const relevant=(seed,product)=>{
@@ -80,18 +79,8 @@ export async function fetchBuyerPull(seed,{apiKey,fetchImpl=fetch,now=new Date()
 }
 
 export default async function handler(req,res){
-  const origin=req.headers?.origin;
-  if(ORIGINS.has(origin))res.setHeader('Access-Control-Allow-Origin',origin);
-  res.setHeader('Vary','Origin');
-  res.setHeader('Access-Control-Allow-Methods','GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers','Accept, X-Research-Token');
-  if(req.method==='OPTIONS')return res.status(204).end();
   if(req.method!=='GET')return res.status(405).json({error:'Method not allowed.'});
-  const expected=process.env.ZETY_ACCESS_TOKEN;
-  if(!expected||expected.length<24)return res.status(503).json({error:'Personal access is not configured.'});
-  const supplied=String(req.headers?.['x-research-token']||'');
-  const a=Buffer.from(expected),b=Buffer.from(supplied);
-  if(a.length!==b.length||!timingSafeEqual(a,b))return res.status(401).json({error:'Personal access key was rejected.'});
+  if(!requireProtectedPreview(req,res))return;
   const seed=String(req.query?.keyword||'').trim();
   if(seed.length<2||seed.length>80)return res.status(400).json({error:'Enter a keyword of 2–80 characters.'});
   try{
