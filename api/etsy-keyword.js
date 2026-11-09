@@ -13,9 +13,10 @@ function cors(req, res) {
 }
 
 function asPrice(listing) {
+  if (listing?.price?.amount == null || listing?.price?.divisor == null) return null;
   const amount = Number(listing?.price?.amount);
-  const divisor = Number(listing?.price?.divisor) || 100;
-  return Number.isFinite(amount) ? amount / divisor : null;
+  const divisor = Number(listing?.price?.divisor);
+  return Number.isFinite(amount) && Number.isFinite(divisor) && divisor > 0 ? amount / divisor : null;
 }
 
 export default async function handler(req, res) {
@@ -54,6 +55,9 @@ export default async function handler(req, res) {
       tags:Array.isArray(x.tags) ? x.tags.filter(t => typeof t === 'string') : [],
       listingType:x.listing_type || null,
       price:asPrice(x),
+      currency:typeof x.price?.currency_code === 'string' ? x.price.currency_code : null,
+      description:typeof x.description === 'string' ? x.description.slice(0, 1200) : null,
+      shopId:x.shop_id == null ? null : String(x.shop_id),
       favorites:Number.isFinite(x.num_favorers) ? x.num_favorers : null,
       createdAt:Number.isFinite(x.original_creation_timestamp) ? x.original_creation_timestamp : null
     }));

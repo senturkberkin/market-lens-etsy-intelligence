@@ -19,7 +19,8 @@ export async function fetchEtsyKeyword(keyword, market='US') {
 }
 
 export function normalizeEtsyObservation(payload) {
-  const prices = Array.isArray(payload.prices)
+  const currencies=new Set((Array.isArray(payload.sample)?payload.sample:[]).map(x=>x?.currency).filter(Boolean));
+  const prices = currencies.size>1 ? [] : Array.isArray(payload.prices)
     ? payload.prices.map(Number).filter(Number.isFinite)
     : [];
   const sorted = [...prices].sort((a,b) => a-b);
