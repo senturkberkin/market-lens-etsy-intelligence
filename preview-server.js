@@ -12,6 +12,13 @@ const sample=Array.from({length:40},(_,i)=>({
 const types={'.html':'text/html','.css':'text/css','.js':'text/javascript'};
 http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://127.0.0.1:4174');
+  if(url.pathname==='/api/keyword-metrics'){
+    const keyword=(url.searchParams.get('keyword')||'').trim();
+    const rows=[keyword,`${keyword} custom`,`${keyword} handmade`].map((term,i)=>({keyword:term,estimatedSearchesMonthly:[420,170,90][i],competingListings:[1200,360,210][i]}));
+    res.setHeader('Content-Type','application/json');
+    res.end(JSON.stringify({query:keyword,exact:rows[0],related:rows.slice(1),source:'Local test fixture',sourceUrl:'',fetchedAt:new Date().toISOString(),searchPeriod:'test fixture',searchMethod:'synthetic data for UI testing',competitionMethod:'synthetic data for UI testing',geography:'test fixture',validatedAgainstEtsy:false,creditsUsed:'No provider credits used in local fixture.'}));
+    return;
+  }
   if(url.pathname==='/api/etsy-keyword'){
     const keyword=url.searchParams.get('keyword')||'';
     res.setHeader('Content-Type','application/json');

@@ -1,5 +1,13 @@
 # Market Lens
 
+## Primary keyword workflow (in development)
+
+The primary page now follows **type → see keyword measurements → choose a strategy**. It requests exact and related keywords from the Alura API and displays two provider fields: estimated monthly Etsy searches (Alura's average of the last 12 completed months) and competing listing count. The app does not calculate a third opportunity score, invent an exact match when the provider omits it, or ask the user to supply demand. Unknown values remain unknown. Each result names its source, retrieval time, method, and unknown geography. The previous research interface is preserved at `legacy.html`.
+
+Set `ALURA_API_KEY` and a random `ZETY_ACCESS_TOKEN` of at least 24 characters as server-side environment variables for the Vercel project. Enter the access token in the page when researching; it is kept only in the current browser tab. The static page in `dist/` calls `api/keyword-metrics.js` through `dist/config.js`; Alura credentials are never embedded in the browser. Before each keyword call, the server queries Alura's free `/usage` endpoint and refuses to continue unless the account is on the Free plan with at least two included API credits remaining. A complete search uses at most two credits: one for the exact keyword and one for a page of related terms. No paid plan, credit top-up, or automatic upgrade is supported. Run `npm test` before deployment. The local `preview-server.js` serves explicitly synthetic UI fixture values only.
+
+**Release gate:** a live Free-plan lookup for `wedding planner` returned an exact row and 25 related rows, consuming two included credits. The response shape and adapter work; the browser workflow has only been checked with local fixtures. Alura's volume is a third-party estimate, not Etsy's measured search count. Compare a diverse sample of provider figures with Etsy Marketplace Insights before describing accuracy as validated. Verify the deployed API and browser workflow on a private preview before promoting this as a finished tool. Alura's API terms permit private research for one's own Etsy business and prohibit offering its data to other people in an app without written agreement. Keep this endpoint private and verify the intended personal use against their terms before live use.
+
 Etsy digital product research dashboard with an official Etsy Open API provider boundary. Live Etsy listing counts and observed prices are retrieved server-side; unsupported demand metrics remain unavailable rather than being estimated from unrelated signals.
 
 ## MVP architecture
