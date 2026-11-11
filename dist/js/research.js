@@ -32,17 +32,13 @@ export function buildResearchReport(keyword, etsy, alura = null, purchase = null
   const advertisedTerms=[...tagMap.values()].map(item=>({phrase:item.phrase,listingIds:[...item.listingIds]}))
     .sort((a,b)=>b.listingIds.length-a.listingIds.length||a.phrase.localeCompare(b.phrase)).slice(0,8);
   const directions=discoverKeywords(keyword,sample);
-  const concepts=generateProductConcepts(keyword,sample).map(concept=>({
-    ...concept,
-    coreFunctionality:advertisedTerms.length
-      ? `A ${concept.format} for ${keyword}; test whether combining ${advertisedTerms.slice(0,2).map(x=>x.phrase).join(' and ')} helps the intended buyer. These are seller-advertised terms, not verified features.`
-      : concept.coreFunctionality
-  }));
+  const concepts=generateProductConcepts(keyword,sample);
   const reviewEvidence=Array.isArray(purchase?.evidence) ? purchase.evidence : [];
   const datedReviews=reviewEvidence.filter(item=>finiteCount(item.reviewCount90d)>0);
   let nextAction;
   if(!sample.length)nextAction='Retry the Etsy listing lookup before comparing products.';
   else if(!competitors.length)nextAction='Refine the keyword toward a digital format and inspect the resulting listings.';
+  else if(!concepts.length)nextAction='Narrow the search toward a specific buyer problem and product format, then inspect competitor descriptions for advertised functionality.';
   else if(demand?.estimatedSearchesMonthly==null)nextAction='Validate buyer search interest for this exact direction before committing to a product.';
   else if(demand.estimatedSearchesMonthly===0)nextAction='Check nearby buyer phrases and another source before treating this zero estimate as no market.';
   else if(!datedReviews.length)nextAction='Inspect dated reviews or another purchase-linked source for these specific competitors.';

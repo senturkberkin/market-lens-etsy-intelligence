@@ -1,48 +1,79 @@
-import {discoverKeywords,groupPhrase,listingRelevance,wordTokens} from './discovery.js';
+import {extractListingCharacteristics,groupProductEvidence,relevantDigitalListings} from './product-evidence.js';
+import {normalizePhrase,wordTokens} from './discovery.js';
 
-const titleCase = value => value.replace(/\b\p{L}/gu, letter=>letter.toUpperCase());
-const formatFromPhrase = (candidate) => candidate.group.intent==='unspecified format'
-  ? wordTokens(candidate.keyword).at(-1) || 'digital product' : candidate.group.intent;
-const mentions = (listing, term) => wordTokens(`${listing.title} ${(listing.tags||[]).join(' ')}`).includes(term);
+const titleCase=value=>value.replace(/\b\p{L}/gu,letter=>letter.toUpperCase());
+const generic=/\b(?:digital|instant|download|printable|editable|template|file|files|gift|art|wall|print|poster|pdf|svg|dxf)\b/gi;
+const meaningful=value=>normalizePhrase(String(value||'').replace(generic,'')).split(' ').filter(Boolean);
+const evidenceLink=claim=>({id:claim.listingId,url:claim.listingUrl,field:claim.field,quote:claim.quote,value:claim.value,kind:claim.kind});
+const unique=claims=>[...new Map(claims.map(item=>[normalizePhrase(item.value),item])).values()];
+const shared=(a,b)=>{
+  const left=new Set(wordTokens(a)),right=new Set(wordTokens(b));
+  return [...left].filter(token=>right.has(token)).length/Math.max(left.size,right.size,1);
+};
+const coMentioned=(a,b,listings)=>listings.some(item=>{
+  const text=normalizePhrase(`${item.title||''} ${item.description||''} ${(item.tags||[]).join(' ')}`);
+  return text.includes(normalizePhrase(a.value))&&text.includes(normalizePhrase(b.value));
+});
 
-export function generateProductConcepts(keyword, sample) {
-  if(!Array.isArray(sample))return [];
-  const relevant=sample.filter(x=>x?.listingType==='download'&&x.id!=null&&listingRelevance(keyword,x)!=='irrelevant');
+export function generateProductConcepts(keyword,sample){
+  const relevant=relevantDigitalListings(keyword,sample);
   if(relevant.length<2)return [];
-  const candidates=discoverKeywords(keyword,relevant).filter(x=>x.kind==='observed'&&x.listingIds.length>=2);
-  if(!candidates.length){
-    const group=groupPhrase(keyword);
-    if(group.intent==='unspecified format')group.intent=groupPhrase(relevant[0].title).intent;
-    candidates.push({keyword,kind:'observed',listingIds:relevant.map(x=>String(x.id)),origins:['query and sampled listings'],group});
-  }
-  const concepts=[],seen=new Set();
-  for(const candidate of candidates){
-    const format=formatFromPhrase(candidate);
-    const audience=candidate.group.audience==='general'
-      ? `People working on ${keyword}` : candidate.group.audience==='adhd' ? 'People with ADHD' :
-        candidate.group.audience==='freelancing' ? 'Freelancers' : candidate.group.audience;
-    const identity=`${candidate.group.audience}|${format}|${candidate.group.need}`;
-    if(seen.has(identity))continue;
-    seen.add(identity);
-    const supporting=relevant.filter(x=>candidate.listingIds.includes(String(x.id))).slice(0,3)
-      .map(x=>({id:String(x.id),title:x.title,url:x.url||null}));
-    const term=candidate.group.audience!=='general'?candidate.group.audience:format;
-    const mentioned=relevant.filter(x=>mentions(x,term));
-    const observed=`${mentioned.length} of ${relevant.length} relevant sampled digital listings mention “${term}” in title or tags.`;
-    const possibleDifference=mentioned.length<relevant.length
-      ? `A ${term}-focused version may be worth testing; absence from some sampled text does not prove a market gap.`
-      : `No uncommon ${term} positioning was found in this sample; inspect functionality before claiming a gap.`;
+  const groups=groupProductEvidence(keyword,relevant);
+  const concepts=[],used=new Set();
+  for(const group of groups){
+    const records=group.records;
+    const allFunctions=records.flatMap(row=>row.functions);
+    const allFeatures=records.flatMap(row=>row.features)
+      .filter(item=>item.field!=='tag'&&meaningful(item.value).length>=2&&shared(group.phrase,item.value)<0.7)
+      .sort((a,b)=>Number(b.field==='description')-Number(a.field==='description'));
+    const distinctFeatures=unique(allFeatures);
+    const functionClaim=allFunctions.find(item=>meaningful(item.value).length>=1);
+    if(!functionClaim||distinctFeatures.length<2)continue;
+    const audienceClaim=records.flatMap(row=>row.audiences)
+      .find(item=>meaningful(item.value).length>=1);
+    if(!audienceClaim)continue;
+    const supporting=records.slice(0,4).map(row=>({id:row.listingId,title:row.title,url:row.url}));
+    let firstFeature=null,secondFeature=null;
+    for(const a of distinctFeatures){
+      const b=distinctFeatures.find(item=>item.listingId!==a.listingId&&
+        shared(a.value,item.value)<0.7&&!coMentioned(a,item,relevant));
+      if(b){firstFeature=a;secondFeature=b;break}
+    }
+    if(!firstFeature)continue;
+    const format=group.head;
+    const formatClaim=records.flatMap(row=>row.formats).find(item=>item.value===format);
+    if(!formatClaim)continue;
+    const purpose=normalizePhrase(functionClaim.value);
+    const audience=audienceClaim.value;
+    const problem=`Need to ${purpose}`;
+    const identity=`${records.map(row=>row.listingId).sort().join(',')}|${normalizePhrase(functionClaim.value)}|${normalizePhrase(audience)}`;
+    if(used.has(identity))continue;
+    used.add(identity);
+    const features=[firstFeature,secondFeature].map(evidenceLink);
+    const difference=`Test a ${group.phrase} that combines “${firstFeature.value}” and “${secondFeature.value}” for ${audience.toLowerCase()}. The sampled text does not establish an unmet need.`;
+    const observed=`${records.length} relevant downloadable Etsy listings advertise this product direction; the cited text supports the audience, function, and feature claims shown below.`;
     concepts.push({
-      id:`concept-${concepts.length+1}`,keyword,
-      name:titleCase(candidate.keyword),audience,
-      problem:`Organize or manage ${candidate.group.need} tasks for ${audience.toLowerCase()}.`,
-      format,coreFunctionality:`A digital ${format} organized around ${candidate.keyword}.`,
-      potentialDifferentiation:possibleDifference,
-      gapAssessment:{status:'hypothesis',observed, inference:possibleDifference,
-        supportingListings:supporting,mentionCount:mentioned.length,comparisonCount:relevant.length},
-      provenance:{phrase:candidate.keyword,origins:candidate.origins,observedListingCount:candidate.listingIds.length}
+      id:`concept-${concepts.length+1}`,keyword,name:titleCase(group.phrase),audience,
+      problem,format,coreFunctionality:functionClaim.value,
+      includedFeatures:features.map(item=>item.value),potentialDifferentiation:difference,
+      characteristics:{audience:evidenceLink(audienceClaim),
+        problem:{kind:'inferred',value:problem,basis:evidenceLink(functionClaim)},
+        format:evidenceLink(formatClaim),function:evidenceLink(functionClaim),features},
+      gapAssessment:{status:'hypothesis',observed,inference:difference,
+        supportingListings:supporting,featureEvidence:features,comparisonCount:records.length},
+      provenance:{phrase:group.phrase,aliases:group.aliases,observedListingCount:records.length}
     });
-    if(concepts.length>=5)break;
   }
   return concepts;
+}
+
+export function explainConceptAbstention(keyword,sample){
+  const relevant=relevantDigitalListings(keyword,sample);
+  if(relevant.length<2)return 'Fewer than two relevant downloadable listings were returned.';
+  if(!groupProductEvidence(keyword,relevant).length)return 'The sample does not show a specific digital product offered by more than one relevant listing.';
+  const records=relevant.map(extractListingCharacteristics).filter(Boolean);
+  if(!records.some(row=>row.functions.length))return 'The returned listing text does not clearly describe what the product does.';
+  if(records.flatMap(row=>row.features).filter(row=>row.field!=='tag').length<2)
+    return 'The listings do not describe enough included functionality to support a specific product difference.';
+  return 'The sample does not support a specific audience, format, and differentiation hypothesis together.';
 }

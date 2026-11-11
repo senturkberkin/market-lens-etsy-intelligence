@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import {buildResearchReport} from '../dist/js/research.js';
 
 // These are fixtures. The live Etsy observations are reported separately.
-for(const [keyword,title,tag] of [
-  ['digital poster','Formula racing digital poster SVG','formula racing poster'],
-  ['ADHD planner','ADHD daily planner Goodnotes','adhd daily planner'],
-  ['wedding budget spreadsheet','Wedding budget spreadsheet Google Sheets','wedding budget spreadsheet']
+for(const [keyword,title,tag,audience,action,firstFeature,secondFeature] of [
+  ['digital poster','Formula racing digital poster SVG','formula racing poster','racing fans','display race statistics','driver profile panel','race results grid'],
+  ['ADHD planner','ADHD daily planner Goodnotes','adhd daily planner','busy adults','track daily tasks','focus timer page','weekly review page'],
+  ['wedding budget spreadsheet','Wedding budget spreadsheet Google Sheets','wedding budget spreadsheet','engaged couples','track wedding spending','vendor payment log','guest cost chart']
 ])test(`${keyword}: combined fixture produces evidence-linked brief`,()=>{
-  const sample=[1,2,3].map(id=>({id,title,tags:[tag],listingType:'download',price:id+4,currency:'USD',favorites:id,url:`https://etsy.example/listing/${id}`}));
+  const sample=[1,2,3].map(id=>({id,title,tags:[tag],listingType:'download',price:id+4,currency:'USD',favorites:id,url:`https://etsy.example/listing/${id}`,
+    description:`A download for ${audience} to ${action}. Includes a ${id===2?secondFeature:firstFeature} and support notes.`}));
   sample.push({id:4,title:'Unrelated knitted scarf',tags:['scarf'],listingType:'physical',price:99,currency:'EUR'});
   const report=buildResearchReport(keyword,{sample,totalListings:10000,source:'Etsy Open API v3',fetchedAt:'2026-11-09'},
     {exact:{keyword,estimatedSearchesMonthly:500,competingListings:3000},searchPeriod:'last 12 months',geography:'unspecified'});

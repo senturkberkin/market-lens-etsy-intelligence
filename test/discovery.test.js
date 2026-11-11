@@ -8,7 +8,7 @@ test('broad seed surfaces observed digital directions without assigning demand',
     {id:2,title:'Wedding budget planner spreadsheet',tags:['wedding budget planner']}
   ]);
   assert.ok(rows.some(x=>x.keyword==='meal planner printable'&&x.kind==='observed'));
-  assert.ok(rows.some(x=>x.group.need==='wedding'||x.group.need==='meal'));
+  assert.ok(rows.every(x=>x.group.need==='planner'));
   assert.ok(groupDiscovered(rows).length>=2);
   assert.ok(rows.every(x=>!('searchVolume' in x)&&!('score' in x)));
 });
@@ -20,10 +20,10 @@ test('unfamiliar topics work without a predefined category',()=>{
   const rows=discoverKeywords('mushroom logbook',[{id:7,title:'Mushroom logbook field journal',tags:['mushroom logbook journal']}]);
   assert.ok(rows.some(x=>x.keyword==='mushroom logbook journal'));
 });
-test('documented synonym creates an explicitly hypothetical alternative',()=>{
+test('lexical synonyms can recall observed listings but cannot invent directions',()=>{
   const rows=discoverKeywords('mom planner',[{id:1,title:'Mother organizer printable',tags:['mother organizer printable']}]);
   assert.ok(rows.some(x=>x.kind==='observed'&&x.keyword==='mother organizer printable'));
-  assert.ok(rows.some(x=>x.kind==='hypothesis'&&x.keyword.includes('mom')));
+  assert.ok(rows.every(x=>x.kind==='observed'));
   assert.equal(listingRelevance('mom planner',{title:'Mother organizer printable'}),'semantic');
 });
 test('duplicate phrases normalize and retain distinct listing citations',()=>{

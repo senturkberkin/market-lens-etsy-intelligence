@@ -31,7 +31,7 @@ export function directionsFromEvidence(parsed,payload){
     for(const item of digital)if(!merged.has(item.keyword))merged.set(item.keyword,item);
     return [...merged.values()].sort((a,b)=>
       Number(b.listingTypes.includes('download'))-Number(a.listingTypes.includes('download'))||
-      b.listingIds.length-a.listingIds.length||a.keyword.localeCompare(b.keyword)).slice(0,40);
+      b.listingIds.length-a.listingIds.length||a.keyword.localeCompare(b.keyword));
   }
   const map=new Map();
   const add=(raw,item,origin)=>{
@@ -50,12 +50,13 @@ export function directionsFromEvidence(parsed,payload){
   }
   return [...map.values()].sort((a,b)=>
     Number(b.listingTypes.includes('download'))-Number(a.listingTypes.includes('download'))||
-    b.listingIds.length-a.listingIds.length||a.keyword.localeCompare(b.keyword)).slice(0,40);
+    b.listingIds.length-a.listingIds.length||a.keyword.localeCompare(b.keyword));
 }
 
 export function indexObservation(parsed,payload,directions){
   const sample=(Array.isArray(payload?.sample)?payload.sample:[]).map(item=>({
     id:String(item.id),url:item.url||null,title:String(item.title||''),tags:Array.isArray(item.tags)?item.tags.slice(0,13):[],
+    description:String(item.description||'').slice(0,1200),
     listingType:item.listingType||null,price:item.price??null,currency:item.currency||null,
     favorites:item.favorites??null,shopId:item.shopId||null,
     relevance:parsed.type==='keyword'?listingRelevance(parsed.keyword,item):'source listing'

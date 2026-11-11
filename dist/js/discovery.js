@@ -1,14 +1,13 @@
 // Candidate phrases are research directions found in a relevance-ranked sample, not demand estimates.
 const STOP = new Set(['a','an','and','for','in','of','on','or','the','to','with','your','you','my','new']);
+// Optional lexical recall only. These pairs never create a product or an
+// unobserved phrase; all displayed directions still need a source listing.
 const ALIASES = [
   ['mom','mother','mum','parent'],['dad','father','parent'],['baby','infant','newborn'],
   ['kid','child','children','toddler'],['planner','organizer','organiser'],
   ['budget','finance','expense'],['wedding','bridal'],['meal','food'],
   ['resume','cv'],['teacher','educator'],['pet','animal'],['habit','routine']
 ];
-const FORMATS = new Set(['template','printable','spreadsheet','planner','tracker','checklist','worksheet','calendar','journal','guide','bundle','chart','invitation','pattern']);
-const AUDIENCES = new Set(['mom','mother','mum','dad','father','parent','family','baby','infant','newborn','kid','child','children','toddler','teacher','educator','student','bride','couple','freelancer','freelancing','adhd','business','pet']);
-const NEEDS = new Set(['budget','finance','expense','meal','food','habit','routine','wedding','bridal','fitness','cleaning','travel','sleep','school','work']);
 const normalizeToken = token => token.length > 4 && token.endsWith('ies') ? token.slice(0,-3)+'y' :
   token.length > 4 && token.endsWith('s') && !token.endsWith('ss') ? token.slice(0,-1) : token;
 export const wordTokens = text => (String(text||'').toLowerCase().match(/[\p{L}\p{N}]+/gu)||[]).map(normalizeToken);
@@ -26,10 +25,11 @@ export function listingRelevance(seed, listing) {
 
 function groupFor(phrase, seed) {
   const terms=core(phrase);
+  const audience=String(phrase).match(/\bfor\s+([\p{L}\p{N}'-]+(?:\s+[\p{L}\p{N}'-]+){0,2})/iu)?.[1]||null;
   return {
-    audience:terms.find(t=>AUDIENCES.has(t))||'general',
-    need:terms.find(t=>NEEDS.has(t))||core(seed)[0]||'other',
-    intent:terms.find(t=>FORMATS.has(t))||'unspecified format'
+    audience:audience||'not stated',
+    need:core(seed).join(' ')||terms.slice(0,-1).join(' ')||'not stated',
+    intent:terms.at(-1)||'not stated'
   };
 }
 export const groupPhrase = (phrase,seed=phrase) => groupFor(phrase,seed);
@@ -83,21 +83,8 @@ export function discoverKeywords(seed, sample) {
       if(segment.length>=2)add(segment.join(' '),'title',listing,match);
     }
   }
-  const observed=[...candidates.values()].sort((a,b)=>b.listingIds.size-a.listingIds.size||a.keyword.localeCompare(b.keyword)).slice(0,40);
-  const generated=[];
-  // Only propose a replacement when a synonym actually explained a semantic match.
-  for(const item of observed.filter(x=>x.match==='semantic')){
-    const words=wordTokens(item.keyword);
-    const wanted=core(seed);
-    const replacement=wanted.find(t=>!words.includes(t)&&words.some(w=>equivalent(t,w)));
-    if(!replacement)continue;
-    const index=words.findIndex(w=>equivalent(replacement,w));
-    const phrase=words.map((w,i)=>i===index?replacement:w).join(' ');
-    if(phrase!==query&&!candidates.has(phrase)&&!generated.some(x=>x.keyword===phrase))
-      generated.push({keyword:phrase,kind:'hypothesis',origins:[],listingIds:[],listingTypes:[],match:'semantic',group:groupFor(phrase,seed),basis:item.keyword});
-    if(generated.length>=8)break;
-  }
-  return [...observed.map(x=>({...x,origins:[...x.origins],listingIds:[...x.listingIds],listingTypes:[...x.listingTypes]})),...generated];
+  const observed=[...candidates.values()].sort((a,b)=>b.listingIds.size-a.listingIds.size||a.keyword.localeCompare(b.keyword));
+  return observed.map(x=>({...x,origins:[...x.origins],listingIds:[...x.listingIds],listingTypes:[...x.listingTypes]}));
 }
 
 export function groupDiscovered(candidates){

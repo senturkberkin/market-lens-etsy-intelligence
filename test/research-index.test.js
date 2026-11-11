@@ -13,7 +13,7 @@ test('one input accepts broad and specific keywords plus Etsy listing and shop U
 
 test('unfamiliar shop and listing evidence create observed directions without demand',()=>{
   const sample=[
-    {id:1,title:'Mushroom cultivation logbook printable',tags:['mushroom cultivation logbook','mushroom grow tracker'],listingType:'download'},
+    {id:1,title:'Mushroom cultivation logbook printable',tags:['mushroom cultivation logbook','mushroom grow tracker'],description:'For mycologists to record substrate batches and fruiting conditions.',listingType:'download'},
     {id:2,title:'Mushroom grow tracker PDF',tags:['mushroom grow tracker'],listingType:'download'}
   ];
   const parsed=parseResearchInput('https://www.etsy.com/shop/FungiStudio');
@@ -22,6 +22,7 @@ test('unfamiliar shop and listing evidence create observed directions without de
   assert.ok(directions.some(x=>x.keyword==='mushroom grow tracker'&&x.listingIds.length===2));
   const observation=indexObservation(parsed,payload,directions);
   assert.equal(observation.returnedListingIds.length,2);
+  assert.match(observation.listings[0].description,/record substrate batches/);
   assert.equal(observation.relatedPhrases[0].kind,'observed');
   assert.ok(!JSON.stringify(observation).includes('searchVolume'));
   assert.match(observation.scope,/does not establish consistent ranking/);
