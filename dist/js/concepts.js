@@ -3,7 +3,13 @@ import {normalizePhrase,wordTokens} from './discovery.js';
 
 const titleCase=value=>value.replace(/\b\p{L}/gu,letter=>letter.toUpperCase());
 const generic=/\b(?:digital|instant|download|printable|editable|template|file|files|gift|art|wall|print|poster|pdf|svg|dxf)\b/gi;
+const PACKAGING=/^(?:cover\b|instruction\b|how to use\b|download\b|files?\b|bonus\b|copyright\b|license\b|personal use\b)/i;
 const meaningful=value=>normalizePhrase(String(value||'').replace(generic,'')).split(' ').filter(Boolean);
+const root=token=>token.replace(/(?:ation|ing|ers|er|ed|s)$/,'');
+const related=(a,b)=>{
+  const right=new Set(meaningful(b).map(root));
+  return meaningful(a).filter(token=>token.length>=4).map(root).some(token=>right.has(token));
+};
 const evidenceLink=claim=>({id:claim.listingId,url:claim.listingUrl,field:claim.field,quote:claim.quote,value:claim.value,kind:claim.kind});
 const unique=claims=>[...new Map(claims.map(item=>[normalizePhrase(item.value),item])).values()];
 const shared=(a,b)=>{
@@ -24,7 +30,7 @@ export function generateProductConcepts(keyword,sample){
     const records=group.records;
     const allFunctions=records.flatMap(row=>row.functions);
     const allFeatures=records.flatMap(row=>row.features)
-      .filter(item=>item.field!=='tag'&&meaningful(item.value).length>=2&&shared(group.phrase,item.value)<0.7)
+      .filter(item=>item.field!=='tag'&&!PACKAGING.test(item.value)&&meaningful(item.value).length>=2&&shared(group.phrase,item.value)<0.7)
       .sort((a,b)=>Number(b.field==='description')-Number(a.field==='description'));
     const distinctFeatures=unique(allFeatures);
     const functionClaim=allFunctions.find(item=>meaningful(item.value).length>=1);
@@ -36,7 +42,9 @@ export function generateProductConcepts(keyword,sample){
     let firstFeature=null,secondFeature=null;
     for(const a of distinctFeatures){
       const b=distinctFeatures.find(item=>item.listingId!==a.listingId&&
-        shared(a.value,item.value)<0.7&&!coMentioned(a,item,relevant));
+        shared(a.value,item.value)<0.7&&!coMentioned(a,item,relevant)&&
+        (related(a.value,`${group.phrase} ${functionClaim.value} ${audienceClaim.value}`)||
+         related(item.value,`${group.phrase} ${functionClaim.value} ${audienceClaim.value}`)));
       if(b){firstFeature=a;secondFeature=b;break}
     }
     if(!firstFeature)continue;

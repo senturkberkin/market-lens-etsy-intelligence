@@ -1,13 +1,20 @@
 import {listingRelevance,normalizePhrase,wordTokens} from './discovery.js';
 
 const STOP=new Set(['a','an','and','as','by','digital','download','editable','file','files','for','from','in','instant','of','on','or','printable','the','to','with','your']);
-const ACTION=/\b(?:helps?\s+(?:you\s+)?|lets?\s+you\s+|to\s+|^)([\p{L}]{3,20})\s+(?:your\s+|the\s+|a\s+|an\s+)?([\p{L}\p{N}][\p{L}\p{N}\s'-]{2,65})/iu;
-const META_VERBS=new Set(['add','buy','click','download','get','give','have','includes','open','print','purchase','receive','send','use','works']);
+// Generic activity verbs, not a catalogue of product niches or buyer needs.
+// The object of the verb always comes from the listing's own words.
+const ACTION=/\b(track|record|log|plan|schedule|calculate|manage|organize|organise|monitor|design|create|customize|customise|edit|map|teach|learn|measure|compare|budget|journal|document|catalog|catalogue|analyze|analyse|visualize|visualise|display|estimate|forecast|prepare|build)(?:s|ed|ing)?\b\s+(?:your\s+|the\s+|a\s+|an\s+)?([\p{L}\p{N}][\p{L}\p{N}\s'-]{2,65})/iu;
 const NON_AUDIENCE=/^(?:you|your|me|use|download|printing|print|home|office|wall|room|sale|commercial|personal|instant|all|any|everyone|gift|gifts|today)$/i;
 const GENERIC=/^(?:digital|instant|download|printable|editable|custom|personalized|personalised|handmade|pdf|svg|dxf|png|jpg|template|file|files|art|wall|print|poster)$/i;
 const tidy=value=>String(value||'').replace(/&(?:amp|quot|apos|#39|lt|gt);/gi,entity=>({'&amp;':'&','&quot;':'"','&apos;':"'",'&#39;':"'",'&lt;':'<','&gt;':'>'}[entity.toLowerCase()]||entity))
   .replace(/\s+/g,' ').trim();
 const words=value=>wordTokens(value).filter(token=>!STOP.has(token));
+const looksLikeBuyer=value=>{
+  const text=String(value||'').trim();
+  if(/[a-z][A-Z]/.test(text)||/\d/.test(text))return false;
+  const end=text.split(/\s+/).at(-1)?.toLowerCase()||'';
+  return /s$/.test(end)||/^(?:people|anyone|someone|everybody|men|women|children)$/i.test(end);
+};
 const stem=token=>token.length>6&&token.endsWith('ing')?token.slice(0,-3):token.length>5&&token.endsWith('ed')?token.slice(0,-2):token;
 const meaning=value=>[...new Set(words(value).map(stem))].sort();
 const overlap=(a,b)=>{
@@ -51,12 +58,12 @@ export function extractListingCharacteristics(listing){
     const forMatch=text.match(/\b(?:designed|made|ideal|perfect|created)?\s*for\s+([\p{L}\p{N}][\p{L}\p{N}'-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'-]*){0,3})/iu);
     if(forMatch&&!NON_AUDIENCE.test(forMatch[1])){
       const value=forMatch[1].split(/\b(?:with|who|that|using|to|and|in|on)\b/i)[0].trim();
-      if(words(value).length>=1&&words(value).length<=4)audiences.push(claim(listing,row.field,text,value));
+      if(words(value).length>=1&&words(value).length<=4&&looksLikeBuyer(value))audiences.push(claim(listing,row.field,text,value));
     }
     const action=row.field==='description'?text.match(ACTION):null;
     if(action){
       const object=action[2].split(/\b(?:with|for|and|while|using|including|in|on|by)\b|[,;|–—]/i)[0].trim().split(/\s+/).slice(0,5).join(' ');
-      if(!META_VERBS.has(action[1].toLowerCase())&&words(object).length>=1)functions.push(claim(listing,row.field,text,`${action[1]} ${object}`));
+      if(words(object).length>=1)functions.push(claim(listing,row.field,text,`${action[1]} ${object}`));
     }
     const withMatch=text.match(/\b(?:with|includes?|featuring|contains?)\s+([^;|–—.!?]{4,120})/iu);
     if(withMatch){

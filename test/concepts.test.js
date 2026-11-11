@@ -7,7 +7,7 @@ import {groupProductEvidence} from '../dist/js/product-evidence.js';
 const markets=[
   ['fermentation batch log','Fermentation Batch Log Spreadsheet for Home Brewers','home brewers','track fermentation temperature','temperature chart','brew schedule'],
   ['ceramic kiln firing','Ceramic Kiln Firing Spreadsheet for Studio Potters','studio potters','record kiln firing temperatures','glaze test chart','firing schedule'],
-  ['aquaponic water log','Aquaponic Water Log Workbook for Fish Farmers','fish farmers','monitor water chemistry readings','pH trend chart','feeding schedule']
+  ['aquaponic water log','Aquaponic Water Log Workbook for Fish Farmers','fish farmers','monitor water chemistry readings','water chemistry chart','feeding schedule']
 ];
 const sample=([keyword,title,audience,functionText,featureA,featureB])=>[
   {id:101,url:'https://www.etsy.com/listing/101',title,tags:[keyword],listingType:'download',

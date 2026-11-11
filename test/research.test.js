@@ -5,8 +5,8 @@ import {buildResearchReport} from '../dist/js/research.js';
 // These are fixtures. The live Etsy observations are reported separately.
 for(const [keyword,title,tag,audience,action,firstFeature,secondFeature] of [
   ['digital poster','Formula racing digital poster SVG','formula racing poster','racing fans','display race statistics','driver profile panel','race results grid'],
-  ['ADHD planner','ADHD daily planner Goodnotes','adhd daily planner','busy adults','track daily tasks','focus timer page','weekly review page'],
-  ['wedding budget spreadsheet','Wedding budget spreadsheet Google Sheets','wedding budget spreadsheet','engaged couples','track wedding spending','vendor payment log','guest cost chart']
+  ['ADHD planner','ADHD daily planner Goodnotes','adhd daily planner','busy adults','track daily tasks','daily task checklist','weekly review page'],
+  ['wedding budget spreadsheet','Wedding budget spreadsheet Google Sheets','wedding budget spreadsheet','engaged couples','track wedding spending','wedding expense tracker','guest cost chart']
 ])test(`${keyword}: combined fixture produces evidence-linked brief`,()=>{
   const sample=[1,2,3].map(id=>({id,title,tags:[tag],listingType:'download',price:id+4,currency:'USD',favorites:id,url:`https://etsy.example/listing/${id}`,
     description:`A download for ${audience} to ${action}. Includes a ${id===2?secondFeature:firstFeature} and support notes.`}));
