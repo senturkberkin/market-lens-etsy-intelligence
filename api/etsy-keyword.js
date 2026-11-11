@@ -19,6 +19,22 @@ function asPrice(listing) {
   return Number.isFinite(amount) && Number.isFinite(divisor) && divisor > 0 ? amount / divisor : null;
 }
 
+export function normalizeEtsyListing(x) {
+  return {
+    id:x.listing_id,
+    url:x.url || null,
+    title:String(x.title || ''),
+    tags:Array.isArray(x.tags) ? x.tags.filter(t => typeof t === 'string') : [],
+    listingType:x.listing_type || null,
+    price:asPrice(x),
+    currency:typeof x.price?.currency_code === 'string' ? x.price.currency_code : null,
+    description:typeof x.description === 'string' ? x.description.slice(0, 1200) : null,
+    shopId:x.shop_id == null ? null : String(x.shop_id),
+    favorites:Number.isFinite(x.num_favorers) ? x.num_favorers : null,
+    createdAt:Number.isFinite(x.original_creation_timestamp) ? x.original_creation_timestamp : null
+  };
+}
+
 export default async function handler(req, res) {
   cors(req, res);
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -48,19 +64,7 @@ export default async function handler(req, res) {
     });
     const results = Array.isArray(data.results) ? data.results : [];
     const prices = results.map(asPrice).filter(Number.isFinite);
-    const sample = results.map(x => ({
-      id:x.listing_id,
-      url:x.url || null,
-      title:String(x.title || ''),
-      tags:Array.isArray(x.tags) ? x.tags.filter(t => typeof t === 'string') : [],
-      listingType:x.listing_type || null,
-      price:asPrice(x),
-      currency:typeof x.price?.currency_code === 'string' ? x.price.currency_code : null,
-      description:typeof x.description === 'string' ? x.description.slice(0, 1200) : null,
-      shopId:x.shop_id == null ? null : String(x.shop_id),
-      favorites:Number.isFinite(x.num_favorers) ? x.num_favorers : null,
-      createdAt:Number.isFinite(x.original_creation_timestamp) ? x.original_creation_timestamp : null
-    }));
+    const sample = results.map(normalizeEtsyListing);
     const digitalSampleSize = sample.filter(x => x.listingType === 'download').length;
     res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=3600');
     return res.status(200).json({

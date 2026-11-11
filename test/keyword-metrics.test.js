@@ -106,12 +106,13 @@ test('production needs explicit protection flag and same-origin Vercel host',()=
   }
 });
 
-test('primary page opens the metric workflow; prior research remains available',async()=>{
+test('primary page opens Etsy exploration; prior research remains available',async()=>{
   const index=await readFile(new URL('../dist/index.html',import.meta.url),'utf8');
   const legacy=await readFile(new URL('../dist/legacy.html',import.meta.url),'utf8');
   assert.match(index,/js\/metrics\.js/);
-  assert.match(index,/Research a keyword/);
-  assert.match(index,/Sign in with Vercel/);
+  assert.match(index,/Explore an idea/);
+  assert.match(index,/Etsy listing, or shop/);
+  assert.match(index,/no Alura credits/);
   assert.doesNotMatch(index,/id="access-key"/);
   assert.match(legacy,/js\/app\.js/);
 });
