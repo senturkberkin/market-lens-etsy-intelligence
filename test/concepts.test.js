@@ -66,3 +66,11 @@ test('different seller phrases join by repeated audience and function evidence',
   const groups=groupProductEvidence('fermentation batch log',rows);
   assert.ok(groups.some(group=>group.aliases.includes('fermentation journal')&&group.aliases.includes('batch tracker')));
 });
+
+test('related buyer tasks can be grouped without identical wording',()=>{
+  const rows=sample(markets[0]);
+  rows[1].description=rows[1].description.replace('track fermentation temperature','record fermentation temperature');
+  const concepts=generateProductConcepts('fermentation batch log',rows);
+  assert.equal(concepts.length,1);
+  assert.equal(concepts[0].gapAssessment.supportingListings.length,2);
+});
