@@ -13,7 +13,9 @@ const looksLikeBuyer=value=>{
   const text=String(value||'').trim();
   if(/[a-z][A-Z]/.test(text)||/\d/.test(text))return false;
   const end=text.split(/\s+/).at(-1)?.toLowerCase()||'';
-  return /s$/.test(end)||/^(?:people|anyone|someone|everybody|men|women|children)$/i.test(end);
+  if(/^(?:all|any|both|everyone|anyone|someone|people)$/i.test(text)||/^(?:both|all|any)\b/i.test(text))return false;
+  return /(?:ers|ors|ists|ians|ents|ants|ples|ides|fans|ults|ies)$/.test(end)||
+    /^(?:people|men|women|children)$/i.test(end);
 };
 const stem=token=>token.length>6&&token.endsWith('ing')?token.slice(0,-3):token.length>5&&token.endsWith('ed')?token.slice(0,-2):token;
 const meaning=value=>[...new Set(words(value).map(stem))].sort();
