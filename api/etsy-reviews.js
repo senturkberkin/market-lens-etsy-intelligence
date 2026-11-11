@@ -1,7 +1,8 @@
 import {requireVercelAccess} from './research-access.js';
+import {etsyApiKey,etsyHeaders,missingEtsyKeyMessage} from './etsy-config.js';
 
 export async function fetchDatedEtsyReviews(ids,{apiKey,fetchImpl=fetch,now=new Date()}={}){
-  if(!apiKey)throw new Error('Etsy provider credentials are not configured.');
+  if(!apiKey)throw new Error(missingEtsyKeyMessage());
   const start=new Date(now.getTime()-90*24*60*60*1000);
   const since=Math.floor(start.getTime()/1000);
   const evidence=[];
@@ -10,7 +11,7 @@ export async function fetchDatedEtsyReviews(ids,{apiKey,fetchImpl=fetch,now=new 
     url.searchParams.set('limit','100');
     url.searchParams.set('min_created',String(since));
     try{
-      const response=await fetchImpl(url,{headers:{'x-api-key':apiKey,accept:'application/json'}});
+      const response=await fetchImpl(url,{headers:etsyHeaders(apiKey)});
       if(!response.ok)throw new Error(`Etsy returned ${response.status}`);
       const payload=await response.json();
       const count=Number.isSafeInteger(payload.count)&&payload.count>=0?payload.count:null;
@@ -32,14 +33,16 @@ export async function fetchDatedEtsyReviews(ids,{apiKey,fetchImpl=fetch,now=new 
 export default async function handler(req,res){
   if(req.method!=='GET')return res.status(405).json({error:'Method not allowed.'});
   if(!requireVercelAccess(req,res))return;
+  const apiKey=etsyApiKey();
+  if(!apiKey)return res.status(503).json({error:missingEtsyKeyMessage()});
   const ids=String(req.query?.ids||'').split(',').map(x=>x.trim()).filter(Boolean);
   if(!ids.length||ids.length>3||ids.some(id=>!/^[1-9]\d{0,18}$/.test(id))||new Set(ids).size!==ids.length)
     return res.status(400).json({error:'Provide one to three distinct Etsy listing IDs.'});
   try{
-    const data=await fetchDatedEtsyReviews(ids,{apiKey:process.env.ETSY_API_KEY});
+    const data=await fetchDatedEtsyReviews(ids,{apiKey});
     res.setHeader('Cache-Control','private, no-store');
     return res.status(200).json(data);
-  }catch(error){
-    return res.status(503).json({error:error instanceof Error?error.message:'Etsy reviews are unavailable.'});
+  }catch{
+    return res.status(502).json({error:'Etsy reviews are unavailable right now.'});
   }
 }

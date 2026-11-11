@@ -8,6 +8,8 @@ The primary page accepts a keyword, product idea, Etsy listing URL, or Etsy shop
 
 `api/etsy-source.js` uses Etsy's documented listing, shop-name search, and active shop-listing endpoints. It is limited to direct Etsy listing/shop inputs and protected by the existing Vercel access gate. This new endpoint has fixture tests but has not yet been live-tested because the branch is not deployed. The existing live Etsy keyword endpoint was verified separately. The Alura integration, detailed evidence report, optional Etsy dated-review check, saved briefs, and legacy research page remain available. Production and `main` remain unchanged.
 
+All Etsy API routes read the existing `ETSY_API_KEY` from their Vercel server environment through one shared configuration module. The research page never asks for an Etsy key or sends one from the browser. If it is absent, the API names `ETSY_API_KEY` and the affected deployment environment without exposing credential values. Keyword, listing/shop, and review route tests cover this flow with fixture credentials; the new listing/shop route still requires a deployed Preview check with live Etsy data.
+
 See [EVIDENCE-INTEGRATION.md](./EVIDENCE-INTEGRATION.md) for field definitions, live verification, and limits. Run `npm test` before any deployment.
 
 Etsy's [API Terms](https://www.etsy.com/legal/api/) limit how long listing content may be displayed and separately restrict analytics of Etsy API content without written authorization. The six-hour display limit is enforced locally; the analytics authorization question remains unresolved, so this branch has not been deployed.

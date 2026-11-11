@@ -1,3 +1,5 @@
+import {etsyApiKey,etsyHeaders,missingEtsyKeyMessage} from './etsy-config.js';
+
 const ALLOWED_ORIGINS = new Set([
   'https://senturkberkin.github.io',
   'http://localhost:4173',
@@ -45,8 +47,8 @@ export default async function handler(req, res) {
   if (keyword.length < 2 || keyword.length > 80) return res.status(400).json({error:'Keyword must be 2–80 characters.'});
   if (!/^[A-Z]{2}$/.test(market)) return res.status(400).json({error:'Market must be a two-letter country code.'});
 
-  const apiKey = process.env.ETSY_API_KEY;
-  if (!apiKey) return res.status(503).json({error:'Etsy provider credentials are not configured.'});
+  const apiKey = etsyApiKey();
+  if (!apiKey) return res.status(503).json({error:missingEtsyKeyMessage()});
 
   const url = new URL('https://openapi.etsy.com/v3/application/listings/active');
   url.searchParams.set('keywords', keyword);
@@ -55,12 +57,11 @@ export default async function handler(req, res) {
   url.searchParams.set('sort_order', 'desc');
 
   try {
-    const upstream = await fetch(url, {headers:{'x-api-key':apiKey, accept:'application/json'}});
+    const upstream = await fetch(url, {headers:etsyHeaders(apiKey)});
     const data = await upstream.json().catch(() => ({}));
     if (!upstream.ok) return res.status(502).json({
       error:'Etsy provider request failed.',
-      providerStatus:upstream.status,
-      providerMessage:String(data?.error || data?.message || '').slice(0, 300) || undefined
+      providerStatus:upstream.status
     });
     const results = Array.isArray(data.results) ? data.results : [];
     const prices = results.map(asPrice).filter(Number.isFinite);

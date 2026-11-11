@@ -1,17 +1,18 @@
 import {normalizeEtsyListing} from './etsy-keyword.js';
 import {requireVercelAccess} from './research-access.js';
+import {etsyApiKey,etsyHeaders,missingEtsyKeyMessage} from './etsy-config.js';
 
 const base='https://openapi.etsy.com/v3/application';
 const digits=/^[1-9]\d{0,18}$/;
 const shopName=/^[\p{L}\p{N}_-]{2,80}$/u;
 
 export async function fetchEtsySourceEvidence({listingId,shop}, {apiKey,fetchImpl=fetch,now=new Date()}={}) {
-  if(!apiKey)throw new Error('Etsy provider credentials are not configured.');
+  if(!apiKey)throw new Error(missingEtsyKeyMessage());
   if(Boolean(listingId)===Boolean(shop))throw new Error('Provide one Etsy listing or shop.');
   if(listingId&&!digits.test(String(listingId)))throw new Error('Invalid Etsy listing ID.');
   if(shop&&!shopName.test(String(shop)))throw new Error('Invalid Etsy shop name.');
   const request=async url=>{
-    const response=await fetchImpl(url,{headers:{'x-api-key':apiKey,accept:'application/json'}});
+    const response=await fetchImpl(url,{headers:etsyHeaders(apiKey)});
     if(!response.ok)throw new Error(`Etsy returned ${response.status}.`);
     return response.json();
   };
@@ -49,14 +50,17 @@ export async function fetchEtsySourceEvidence({listingId,shop}, {apiKey,fetchImp
 export default async function handler(req,res){
   if(req.method!=='GET')return res.status(405).json({error:'Method not allowed.'});
   if(!requireVercelAccess(req,res))return;
+  const apiKey=etsyApiKey();
+  if(!apiKey)return res.status(503).json({error:missingEtsyKeyMessage()});
   const listingId=req.query?.listingId==null?null:String(req.query.listingId);
   const shop=req.query?.shop==null?null:String(req.query.shop);
   try{
-    const data=await fetchEtsySourceEvidence({listingId,shop},{apiKey:process.env.ETSY_API_KEY});
+    const data=await fetchEtsySourceEvidence({listingId,shop},{apiKey});
     res.setHeader('Cache-Control','private, no-store');
     return res.status(200).json(data);
   }catch(error){
     const message=error instanceof Error?error.message:'Etsy source is unavailable.';
-    return res.status(message.startsWith('Invalid')||message.startsWith('Provide')?400:502).json({error:message});
+    const invalid=message==='Invalid Etsy listing ID.'||message==='Invalid Etsy shop name.'||message==='Provide one Etsy listing or shop.';
+    return res.status(invalid?400:502).json({error:invalid?message:'Etsy source is unavailable right now.'});
   }
 }
