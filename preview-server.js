@@ -35,6 +35,16 @@ http.createServer(async(req,res)=>{
       sampleSize:sample.length,digitalSampleSize:sample.length,fetchedAt:new Date().toISOString(),source:'Local test fixture'}));
     return;
   }
+  if(url.pathname==='/api/commercial-research'&&req.method==='POST'){
+    let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
+      const directions=(JSON.parse(body||'{}').directions||[]).slice(0,3);
+      const results=directions.map((direction,index)=>({direction,
+        keyword:{keyword:direction,estimatedSearchesMonthly:420-index*70,competingListings:1200-index*120,asOf:'2026-11-01T00:00:00.000Z'},
+        products:[{id:`fixture-${index}-a`,title:`${direction} for families`,url:null,shop:{id:`shop-${index}-a`,name:`Fixture shop A`},sales:{est_last_month:3,est_monthly_avg:2,est_lifetime:22,est_trend_3m:.2},as_of:'2026-11-08T00:00:00.000Z'},
+          {id:`fixture-${index}-b`,title:`${direction} for families`,url:null,shop:{id:`shop-${index}-b`,name:`Fixture shop B`},sales:{est_last_month:1,est_monthly_avg:1,est_lifetime:8,est_trend_3m:null},as_of:'2026-11-08T00:00:00.000Z'}],total:{value:2}}));
+      res.setHeader('Content-Type','application/json');res.end(JSON.stringify({plan:{directions,maxCredits:directions.length*11,withinBudget:true},results,source:'Local synthetic fixture — not provider evidence',retrievedAt:new Date().toISOString()}));
+    });return;
+  }
   if(url.pathname==='/config.js'){
     res.setHeader('Content-Type','text/javascript');
     res.end("window.MARKET_LENS_API_BASE='http://127.0.0.1:4174';");

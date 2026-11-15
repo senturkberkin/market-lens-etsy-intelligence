@@ -106,13 +106,13 @@ test('production needs explicit protection flag and same-origin Vercel host',()=
   }
 });
 
-test('primary page opens Etsy exploration; prior research remains available',async()=>{
+test('primary page starts the integrated product-selection workflow without client credentials',async()=>{
   const index=await readFile(new URL('../dist/index.html',import.meta.url),'utf8');
   const legacy=await readFile(new URL('../dist/legacy.html',import.meta.url),'utf8');
-  assert.match(index,/js\/metrics\.js/);
-  assert.match(index,/Explore an idea/);
-  assert.match(index,/Etsy listing, or shop/);
-  assert.match(index,/no Alura credits/);
+  assert.match(index,/js\/mvp\.js/);
+  assert.match(index,/Find products to create/);
+  assert.match(index,/Etsy URL/);
+  assert.match(index,/exact research batch and maximum credit cost/);
   assert.doesNotMatch(index,/id="access-key"/);
   assert.match(legacy,/js\/app\.js/);
 });
