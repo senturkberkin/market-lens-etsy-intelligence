@@ -78,10 +78,9 @@ export function discoverKeywords(seed, sample) {
     if(match==='irrelevant')continue;
     for(const tag of (Array.isArray(listing.tags)?listing.tags:[]).slice(0,13))add(tag,'tag',listing,match);
     const words=wordTokens(listing.title);
-    for(let i=0;i<words.length-1;i++){
-      const segment=words.slice(i,i+4);
-      if(segment.length>=2)add(segment.join(' '),'title',listing,match);
-    }
+    // A sliding title window often starts mid-phrase and invents broken
+    // directions. The opening phrase is a usable seller-authored label.
+    if(words.length>=2)add(words.slice(0,4).join(' '),'title',listing,match);
   }
   const observed=[...candidates.values()].sort((a,b)=>b.listingIds.size-a.listingIds.size||a.keyword.localeCompare(b.keyword));
   return observed.map(x=>({...x,origins:[...x.origins],listingIds:[...x.listingIds],listingTypes:[...x.listingTypes]}));

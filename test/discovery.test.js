@@ -40,6 +40,12 @@ test('irrelevant results and empty evidence produce no suggestions',()=>{
   assert.deepEqual(discoverKeywords('meal planner',[]),[]);
   assert.deepEqual(discoverKeywords('',[{title:'Meal planner'}]),[]);
 });
+test('title extraction does not offer a phrase clipped from the middle',()=>{
+  const rows=discoverKeywords('fermentation log',[
+    {id:1,title:'Bread log fermentation hydration recipe',tags:[],listingType:'download'}
+  ]);
+  assert.ok(rows.every(row=>row.keyword!=='log fermentation hydration recipe'));
+});
 test('physical products remain observed directions, not digital demand',()=>{
   const rows=discoverKeywords('dog collar',[{id:1,title:'Custom dog collar with name',tags:['personalized dog collar'],listingType:'physical'}]);
   const phrase=rows.find(x=>x.keyword==='personalized dog collar');
