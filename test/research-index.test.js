@@ -30,8 +30,20 @@ test('unfamiliar shop and listing evidence create observed directions without de
 
 test('a listing title can supply directions when tags are absent',()=>{
   const parsed=parseResearchInput('https://www.etsy.com/listing/99/example');
-  const directions=directionsFromEvidence(parsed,{sample:[{id:99,title:'Ceramic kiln firing tracker spreadsheet',tags:[],listingType:'download'}]});
-  assert.ok(directions.some(x=>x.keyword==='ceramic kiln firing tracker'&&x.origins.includes('Etsy listing title')));
+  const directions=directionsFromEvidence(parsed,{keyword:'ceramic kiln firing',sample:[{id:99,title:'Ceramic kiln firing tracker spreadsheet',tags:[],listingType:'download'}]});
+  assert.ok(directions.some(x=>x.keyword==='ceramic kiln firing tracker'&&x.origins.includes('title')));
+});
+
+test('listing URL does not inherit unrelated products from the same shop',()=>{
+  const parsed=parseResearchInput('https://www.etsy.com/listing/99/fermentation-log');
+  const payload={keyword:'fermentation log',sample:[
+    {id:99,title:'Fermentation log printable PDF',tags:['fermentation log printable'],listingType:'download'},
+    {id:100,title:'Hotel management printable PDF',tags:['hotel management printable'],listingType:'download'},
+    {id:101,title:'Hotel management printable PDF',tags:['hotel management printable'],listingType:'download'}
+  ]};
+  const directions=directionsFromEvidence(parsed,payload);
+  assert.ok(directions.some(item=>item.keyword==='fermentation log printable'));
+  assert.ok(directions.every(item=>!item.keyword.includes('hotel')));
 });
 
 test('index reuses fresh observations and relates searches only by shared listing IDs',()=>{

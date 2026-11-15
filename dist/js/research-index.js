@@ -24,6 +24,10 @@ export function parseResearchInput(value){
 
 export function directionsFromEvidence(parsed,payload){
   const sample=Array.isArray(payload?.sample)?payload.sample:[];
+  if(parsed.type==='listing'){
+    const anchor=sample.filter(item=>String(item.id)===String(parsed.id));
+    return discoverKeywords(payload.keyword||anchor[0]?.title||'',anchor);
+  }
   if(parsed.type==='keyword'){
     const all=discoverKeywords(parsed.keyword,sample);
     const digital=discoverKeywords(parsed.keyword,sample.filter(x=>x.listingType==='download'));
