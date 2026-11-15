@@ -2,7 +2,10 @@
 // directions come from returned listing text and every conclusion retains IDs.
 import {listingRelevance, normalizePhrase, wordTokens} from './discovery.js';
 
-const NOISE=new Set(['digital','download','instant','printable','editable','template','file','files','gift','sale','new','for','with','and','the','a','an']);
+const NOISE=new Set(['digital','download','instant','printable','editable','template','file','files','sale','new','for','with','and','the','a','an']);
+// These are writing fragments and generic merchandising labels, not product
+// categories. They prevent title prose from becoming a paid search query.
+const FRAGMENT=new Set(['these','this','each','ratio','resolution','please','your','you','our','perfect','unique','best','gift','present','idea','thing','stuff']);
 const canonical=value=>normalizePhrase(value);
 const tokens=value=>wordTokens(value).filter(word=>!NOISE.has(word));
 const overlap=(a,b)=>{
@@ -14,44 +17,86 @@ const phraseFromListing=listing=>{
   const words=tokens(head).slice(0,7);
   return words.length>=2?words.join(' '):'';
 };
+const sourceText=listing=>String(listing.title||'').split(/[|,;–—:]/)[0].trim().slice(0,180);
+const AUDIENCE_FRAGMENT=new Set(['these','this','each','ratio','resolution','who','like','printing','print','prints','download','file','files','quality','the','a','an']);
+const idsOverlap=(a,b)=>{
+  const left=new Set(a),right=new Set(b);
+  return [...left].filter(id=>right.has(id)).length/Math.max(Math.min(left.size,right.size),1);
+};
+const resemblesSeed=(seed,phrase)=>{
+  const left=new Set(tokens(seed)),right=new Set(tokens(phrase));
+  return [...left].filter(token=>right.has(token)).length/Math.max(Math.min(left.size,right.size),1)>=.5;
+};
+const cleanMarketPhrase=value=>{
+  const phrase=canonical(value),words=tokens(phrase);
+  if(words.length<2||words.length>6||words.some(word=>FRAGMENT.has(word)))return null;
+  return phrase;
+};
 const buyerText=listing=>{
-  const text=`${listing.title||''} ${(listing.tags||[]).join(' ')} ${listing.description||''}`;
+  // Descriptions frequently contain instructions or shipping prose. Only use
+  // the compact seller-authored title/tag surface for an audience claim.
+  const text=`${listing.title||''} ${(listing.tags||[]).join(' ')}`;
   const match=text.match(/\bfor\s+([\p{L}\p{N}'-]+(?:\s+[\p{L}\p{N}'-]+){0,3})/iu);
-  return match?.[1]||null;
+  const value=match?.[1]?.trim()||null;
+  if(!value||wordTokens(value).some(token=>AUDIENCE_FRAGMENT.has(token)))return null;
+  return value;
 };
 
 export function discoverProductMarkets(seed,listings){
+  const normalizedSeed=canonical(seed);
   const rows=(Array.isArray(listings)?listings:[]).filter(row=>row?.listingType==='download');
   const groups=new Map();
+  const add=(phrase,listing,isSeed=false)=>{
+    const clean=cleanMarketPhrase(phrase);
+    if(!clean||(!isSeed&&!resemblesSeed(normalizedSeed,clean)))return;
+    const group=groups.get(clean)||{phrase:clean,listingIds:new Set(),listings:[],audiences:new Map(),isSeed:false};
+    group.isSeed||=isSeed;
+    group.listingIds.add(String(listing.id));
+    if(!group.listings.some(row=>String(row.id)===String(listing.id)))group.listings.push(listing);
+    const audience=buyerText(listing);
+    if(audience)group.audiences.set(canonical(audience),audience);
+    groups.set(clean,group);
+  };
   for(const listing of rows){
     if(listingRelevance(seed,listing)==='irrelevant')continue;
-    const candidates=[phraseFromListing(listing),...(listing.tags||[]).map(value=>canonical(value))]
-      .map(canonical).filter(value=>tokens(value).length>=2&&tokens(value).length<=7);
-    for(const phrase of [...new Set(candidates)]){
-      const key=phrase;
-      const group=groups.get(key)||{phrase,listingIds:new Set(),listings:[],audiences:new Map()};
-      group.listingIds.add(String(listing.id));
-      if(!group.listings.some(row=>String(row.id)===String(listing.id)))group.listings.push(listing);
-      const audience=buyerText(listing);
-      if(audience)group.audiences.set(canonical(audience),audience);
-      groups.set(key,group);
-    }
+    add(normalizedSeed,listing,true);
+    for(const phrase of new Set([phraseFromListing(listing),...(listing.tags||[])]))add(phrase,listing);
   }
-  return [...groups.values()].filter(group=>group.listingIds.size>=2)
-    .map(group=>({phrase:group.phrase,listingIds:[...group.listingIds],listings:group.listings,
-      audiences:[...group.audiences.values()]}))
-    .sort((a,b)=>b.listingIds.length-a.listingIds.length||a.phrase.localeCompare(b.phrase));
+  const raw=[...groups.values()].filter(group=>group.listingIds.size>=2).map(group=>({
+    phrase:group.phrase,listingIds:[...group.listingIds],listings:group.listings,audiences:[...group.audiences.values()],isSeed:group.isSeed
+  }));
+  // Merge alternate seller wording only when the phrases materially overlap or
+  // are repeatedly attached to the same listings. Keep the clearest phrase.
+  const merged=[];
+  for(const candidate of raw.sort((a,b)=>b.listingIds.length-a.listingIds.length||a.phrase.localeCompare(b.phrase))){
+    const match=merged.find(group=>overlap(group.phrase,candidate.phrase)>=.5||idsOverlap(group.listingIds,candidate.listingIds)>=.7);
+    if(!match){merged.push({...candidate,aliases:[]});continue;}
+    match.aliases.push(candidate.phrase);
+    for(const id of candidate.listingIds)if(!match.listingIds.includes(id))match.listingIds.push(id);
+    for(const listing of candidate.listings)if(!match.listings.some(row=>String(row.id)===String(listing.id)))match.listings.push(listing);
+    for(const audience of candidate.audiences)if(!match.audiences.includes(audience))match.audiences.push(audience);
+    match.isSeed||=candidate.isSeed;
+  }
+  return merged.map(group=>({
+    ...group,
+    sourceListings:group.listings.slice(0,4).map(listing=>({id:String(listing.id),title:sourceText(listing),url:listing.url||null})),
+    reason:`${group.listingIds.length} relevant downloadable Etsy listings use this coherent product phrase.`
+  })).sort((a,b)=>Number(a.isSeed)-Number(b.isSeed)||b.listingIds.length-a.listingIds.length||a.phrase.localeCompare(b.phrase));
 }
 
 // This selects diverse research probes, not winners. A parent phrase cannot
 // crowd out all of the distinct product forms found in the evidence.
 export function selectResearchBatch(seed,markets,max=3){
+  const specific=markets.filter(market=>!market.isSeed);
   const chosen=[];
-  for(const market of markets){
-    if(market.phrase===canonical(seed))continue;
-    if(chosen.some(other=>overlap(other.phrase,market.phrase)>=0.72))continue;
+  for(const market of specific){
+    if(chosen.some(other=>overlap(other.phrase,market.phrase)>=.45||idsOverlap(other.listingIds,market.listingIds)>=.7))continue;
     chosen.push(market);
     if(chosen.length>=max)break;
+  }
+  if(!chosen.length){
+    const fallback=markets.find(market=>market.isSeed&&market.listingIds.length>=2);
+    if(fallback)chosen.push(fallback);
   }
   return chosen;
 }

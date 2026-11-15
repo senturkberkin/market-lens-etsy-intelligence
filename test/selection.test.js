@@ -42,6 +42,27 @@ test('movie poster can surface horror poster and decorative purpose is not rejec
   assert.equal(assessed.audience,'buyers seeking horror movie poster');
   assert.equal(assessed.recommended,true);
 });
+test('planner consolidates overlapping wall-art wording and rejects generic gift labels from paid research',()=>{
+  const horrorRows=[
+    {id:'a',listingType:'download',title:'Horror Movie Poster Halloween Wall Art Digital Download',tags:['horror movie poster','halloween wall art','horror wall art','horror fan gift']},
+    {id:'b',listingType:'download',title:'Horror Movie Poster Gothic Wall Art Digital Download',tags:['horror movie poster','halloween wall art','horror wall art','horror fan gift']},
+    {id:'c',listingType:'download',title:'Horror Movie Poster Printable Art',tags:['horror movie poster','horror wall art']}
+  ];
+  const markets=discoverProductMarkets('horror movie poster',horrorRows);
+  const batch=selectResearchBatch('horror movie poster',markets,3);
+  assert.deepEqual(batch.map(item=>item.phrase),['horror movie poster']);
+  assert.ok(batch[0].sourceListings.every(item=>!item.title.includes('These')));
+  assert.equal(markets.some(item=>item.phrase==='horror fan gift'),false);
+  assert.equal(markets.some(item=>item.phrase==='halloween wall art'),false);
+});
+test('movie poster retains a narrower evidence-backed segment rather than forcing three queries',()=>{
+  const rows=[
+    {id:'1',listingType:'download',title:'Horror Movie Poster Digital Download',tags:['horror movie poster']},
+    {id:'2',listingType:'download',title:'Horror Movie Poster Digital Download',tags:['horror movie poster']},
+    {id:'3',listingType:'download',title:'Horror Movie Poster Digital Download',tags:['horror movie poster']}
+  ];
+  assert.deepEqual(selectResearchBatch('movie poster',discoverProductMarkets('movie poster',rows),3).map(item=>item.phrase),['horror movie poster']);
+});
 test('broad, functional, decorative, and unfamiliar fixture inputs remain open-vocabulary and abstain when evidence is thin',()=>{
   for(const seed of ['digital planner','wedding budget spreadsheet','gardening','fermentation vessel log']){
     const rows=[{id:`${seed}-1`,listingType:'download',title:`${seed} illustrated edition`,tags:[`${seed} edition`]}];
