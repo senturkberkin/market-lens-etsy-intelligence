@@ -5,6 +5,7 @@ import {fetchEtsySourceEvidence} from '../api/etsy-source.js';
 const listing={listing_id:123,shop_id:77,title:'Wedding budget spreadsheet',tags:['wedding budget spreadsheet'],listing_type:'download',price:{amount:700,divisor:100,currency_code:'USD'}};
 const other={listing_id:456,shop_id:77,title:'Wedding guest tracker',tags:['wedding guest tracker'],listing_type:'download'};
 const response=body=>({ok:true,json:async()=>body});
+const failedResponse=status=>({ok:false,status,json:async()=>({})});
 
 test('listing URL source uses the actual listing and its shop sample',async()=>{
   const calls=[];
@@ -27,4 +28,11 @@ test('shop URL source requires an exact shop name match',async()=>{
   assert.equal(result.sourceContext.name,'BudgetStudio');
   assert.equal(result.digitalSampleSize,2);
   await assert.rejects(fetchEtsySourceEvidence({shop:'NoMatch'},{apiKey:'test-key',fetchImpl:async()=>response({results:[{shop_id:77,shop_name:'Other'}]})}),/No exact/);
+});
+
+test('direct unavailable Etsy listing retains a distinguishable upstream status',async()=>{
+  await assert.rejects(
+    fetchEtsySourceEvidence({listingId:'123'},{apiKey:'test-key',fetchImpl:async()=>failedResponse(404)}),
+    error=>error.status===404&&error.resource==='listing'
+  );
 });

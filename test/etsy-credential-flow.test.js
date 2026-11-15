@@ -91,3 +91,22 @@ test('Etsy upstream errors cannot echo credential values',async()=>{
     if(previousEnvironment===undefined)delete process.env.VERCEL_ENV;else process.env.VERCEL_ENV=previousEnvironment;
   }
 });
+
+test('a missing direct listing is reported without exposing upstream details',async()=>{
+  const previousKey=process.env.ETSY_API_KEY;
+  const previousEnvironment=process.env.VERCEL_ENV;
+  const previousFetch=globalThis.fetch;
+  process.env.ETSY_API_KEY='fixture-only-secret';
+  process.env.VERCEL_ENV='preview';
+  globalThis.fetch=async()=>({ok:false,status:404,json:async()=>({detail:'not found'})});
+  try{
+    const res=response();
+    await sourceHandler(request({listingId:'123'}),res);
+    assert.equal(res.statusCode,404);
+    assert.deepEqual(res.body,{error:'This Etsy listing is unavailable.'});
+  }finally{
+    globalThis.fetch=previousFetch;
+    if(previousKey===undefined)delete process.env.ETSY_API_KEY;else process.env.ETSY_API_KEY=previousKey;
+    if(previousEnvironment===undefined)delete process.env.VERCEL_ENV;else process.env.VERCEL_ENV=previousEnvironment;
+  }
+});

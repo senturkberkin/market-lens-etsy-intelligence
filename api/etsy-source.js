@@ -11,27 +11,32 @@ export async function fetchEtsySourceEvidence({listingId,shop}, {apiKey,fetchImp
   if(Boolean(listingId)===Boolean(shop))throw new Error('Provide one Etsy listing or shop.');
   if(listingId&&!digits.test(String(listingId)))throw new Error('Invalid Etsy listing ID.');
   if(shop&&!shopName.test(String(shop)))throw new Error('Invalid Etsy shop name.');
-  const request=async url=>{
+  const request=async (url,resource)=>{
     const response=await fetchImpl(url,{headers:etsyHeaders(apiKey)});
-    if(!response.ok)throw new Error(`Etsy returned ${response.status}.`);
+    if(!response.ok){
+      const error=new Error(`Etsy returned ${response.status}.`);
+      error.status=response.status;
+      error.resource=resource;
+      throw error;
+    }
     return response.json();
   };
   let anchor=null,shopId=null,shopLabel=null;
   if(listingId){
-    const row=await request(`${base}/listings/${encodeURIComponent(listingId)}`);
+    const row=await request(`${base}/listings/${encodeURIComponent(listingId)}`,'listing');
     anchor=normalizeEtsyListing(row);
     shopId=anchor.shopId;
     if(!shopId)throw new Error('The listing did not include a shop ID.');
   }else{
     const url=new URL(`${base}/shops`);url.searchParams.set('shop_name',shop);url.searchParams.set('limit','10');
-    const found=await request(url);
+    const found=await request(url,'shop');
     const match=(Array.isArray(found.results)?found.results:[]).find(x=>String(x.shop_name||'').toLowerCase()===shop.toLowerCase());
     if(!match?.shop_id)throw new Error('No exact Etsy shop match was returned.');
     shopId=String(match.shop_id);shopLabel=String(match.shop_name);
   }
   const url=new URL(`${base}/shops/${encodeURIComponent(shopId)}/listings/active`);
   url.searchParams.set('limit','50');
-  const found=await request(url);
+  const found=await request(url,'shop-listings');
   const sample=(Array.isArray(found.results)?found.results:[]).map(normalizeEtsyListing);
   if(anchor&&!sample.some(x=>String(x.id)===String(anchor.id)))sample.unshift(anchor);
   const keyword=anchor?.tags?.find(tag=>String(tag).trim().split(/\s+/).length>=2)||
@@ -61,6 +66,8 @@ export default async function handler(req,res){
   }catch(error){
     const message=error instanceof Error?error.message:'Etsy source is unavailable.';
     const invalid=message==='Invalid Etsy listing ID.'||message==='Invalid Etsy shop name.'||message==='Provide one Etsy listing or shop.';
+    const unavailableListing=error?.resource==='listing'&&error?.status===404;
+    if(unavailableListing)return res.status(404).json({error:'This Etsy listing is unavailable.'});
     return res.status(invalid?400:502).json({error:invalid?message:'Etsy source is unavailable right now.'});
   }
 }
