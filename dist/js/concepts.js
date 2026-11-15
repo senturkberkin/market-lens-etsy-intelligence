@@ -3,9 +3,9 @@ import {normalizePhrase,wordTokens} from './discovery.js';
 
 const titleCase=value=>value.replace(/\b\p{L}/gu,letter=>letter.toUpperCase());
 const generic=/\b(?:digital|instant|download|printable|editable|template|file|files|gift|art|wall|print|poster|pdf|svg|dxf)\b/gi;
-const PACKAGING=/^(?:cover\b|instruction\b|how to use\b|download\b|files?\b|bonus\b|copyright\b|license\b|personal use\b|this\b|you\b|your\b)/i;
+const PACKAGING=/^(?:cover\b|instruction\b|how to use\b|download\b|files?\b|bonus\b|copyright\b|license\b|personal use\b|this\b|you\b|your\b)|\b(?:system spreadsheet|planner template|spreadsheet template)\s*$/i;
 const MARKETING=/\b(?:best year yet|dream life|perfect life|everything you need|what matters most|next level|like a pro)\b/i;
-const GENERIC_OBJECT=/^(?:planner|spreadsheet|template|pdf|download|file|printable|product|pages?|bundle|journal|tracker)$/i;
+const GENERIC_OBJECT=/^(?:planner|spreadsheet|template|pdf|download|file|printable|product|pages?|bundle|journal|tracker)\b/i;
 const meaningful=value=>normalizePhrase(String(value||'').replace(generic,'')).split(' ').filter(Boolean);
 const root=token=>token.replace(/(?:ation|ing|ers|er|ed|s)$/,'');
 const roleWords=(text,dropVerb=false)=>meaningful(text).slice(dropVerb?1:0)
@@ -69,7 +69,10 @@ export function generateProductConcepts(keyword,sample){
     if(!firstFeature)continue;
     const titles=records.map(row=>normalizePhrase(row.title.split(/[|,;–—]/)[0].split(/\bfor\b/i)[0]));
     const repeatedTitle=titles.find(value=>titles.filter(other=>other===value).length>=2);
-    const productPhrase=repeatedTitle&&wordTokens(repeatedTitle).length<=7?repeatedTitle:group.phrase;
+    const titleHead=wordTokens(titles[0]).at(-1);
+    const comparableTitles=titles.filter(value=>wordTokens(value).at(-1)===titleHead&&wordTokens(value).length<=7);
+    const productPhrase=repeatedTitle&&wordTokens(repeatedTitle).length<=7?repeatedTitle:
+      comparableTitles.length>=2?comparableTitles.sort((a,b)=>wordTokens(a).length-wordTokens(b).length)[0]:group.phrase;
     const format=wordTokens(productPhrase).at(-1);
     const formatClaim=records.flatMap(row=>row.formats).find(item=>item.value===format);
     if(!formatClaim)continue;
@@ -78,6 +81,8 @@ export function generateProductConcepts(keyword,sample){
     const problem=`Need to ${purpose}`;
     const identity=`${normalizePhrase(functionClaim.value)}|${normalizePhrase(audience)}`;
     if(used.has(identity))continue;
+    if(concepts.some(item=>item.format===format&&roleSimilarity(item.audience,audience)>=0.5&&
+      roleSimilarity(item.coreFunctionality,functionClaim.value,true)>=0.5))continue;
     used.add(identity);
     const features=[firstFeature,secondFeature].map(evidenceLink);
     const difference=`Test a ${productPhrase} that combines “${firstFeature.value}” and “${secondFeature.value}” for ${audience.toLowerCase()}. The sampled text does not establish an unmet need.`;

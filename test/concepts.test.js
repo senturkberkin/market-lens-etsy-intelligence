@@ -74,3 +74,11 @@ test('related buyer tasks can be grouped without identical wording',()=>{
   assert.equal(concepts.length,1);
   assert.equal(concepts[0].gapAssessment.supportingListings.length,2);
 });
+
+test('product title wording is not mistaken for an advertised function',()=>{
+  const row={id:19,title:'Wedding Budget Spreadsheet',tags:['wedding budget spreadsheet'],listingType:'download',
+    description:'Wedding Budget Spreadsheet is designed for couples. Includes actual costs and a Wedding Finance System Spreadsheet.'};
+  const result=extractListingCharacteristics(row);
+  assert.deepEqual(result.functions,[]);
+  assert.deepEqual(generateProductConcepts('wedding budget spreadsheet',[row,{...row,id:20}]),[]);
+});

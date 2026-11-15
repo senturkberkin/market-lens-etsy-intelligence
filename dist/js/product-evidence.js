@@ -64,8 +64,10 @@ export function extractListingCharacteristics(listing){
     }
     const action=row.field==='description'?text.match(ACTION):null;
     if(action){
+      const prefix=text.slice(0,action.index).trimEnd();
+      const verbal=action.index===0||/\b(?:to|can|will|helps?|lets?|you)\s*$/i.test(prefix);
       const object=action[2].split(/\b(?:with|for|and|while|using|including|in|on|by)\b|[,;|–—]/i)[0].trim().split(/\s+/).slice(0,5).join(' ');
-      if(words(object).length>=1)functions.push(claim(listing,row.field,text,`${action[1]} ${object}`));
+      if(verbal&&words(object).length>=1)functions.push(claim(listing,row.field,text,`${action[1]} ${object}`));
     }
     const withMatch=text.match(/\b(?:with|includes?|featuring|contains?)\s+([^;|–—.!?]{4,120})/iu);
     if(withMatch){
