@@ -65,6 +65,9 @@ export function discoverProductMarkets(seed, listings, minimum = 2, shopScope = 
       // Permit a full product name from a relevant title as an exploratory
       // lead. Partial suffixes and generic tags cannot use this exception.
       const named=rows.filter(r=>identity(r.title)===phrase);
+      const subject=terms(theme), candidate=terms(phrase);
+      if(subject.length>1 && (!candidate.includes(subject.at(-1)) ||
+        !subject.slice(0,-1).some(t=>candidate.includes(t))))continue;
       if(!named.length || (minimum>1 && new Set(named.map(r=>r.shopId).filter(Boolean)).size<2))continue;
     }
     const evidence = rows.filter(row => classifyComparable(phrase,row) === 'direct');
@@ -72,6 +75,14 @@ export function discoverProductMarkets(seed, listings, minimum = 2, shopScope = 
     const listingIds = evidence.map(r => String(r.id)).sort();
     markets.push({phrase, listingIds, listings:evidence, design:sharedDesign(phrase,evidence), isSeed:key(phrase)===key(seed),
       sourceListings:evidence.slice(0,4), reason:`${listingIds.length} downloadable listings describe this product in their titles.`});
+  }
+  if(!shopScope && usable(clean(seed)) && !markets.some(m=>listingRelevance(seed,{title:m.phrase})!=='irrelevant')){
+    const mentions=rows.filter(r=>clauses(r.title).slice(1).some(part=>listingRelevance(seed,{title:part})==='exact') ||
+      (r.tags||[]).some(tag=>key(tag)===key(seed)));
+    if(mentions.length>=minimum){
+      markets.unshift({phrase:clean(seed),isSeed:true,componentOnly:true,listings:mentions,
+        listingIds:mentions.map(r=>String(r.id)),sourceListings:mentions.slice(0,4),design:sharedDesign(seed,[])});
+    }
   }
   return markets.sort((a,b) => Number(Boolean(b.design.format))-Number(Boolean(a.design.format)) ||
     Number(Boolean(b.design.detail))-Number(Boolean(a.design.detail)) || a.phrase.length-b.phrase.length || a.phrase.localeCompare(b.phrase));
@@ -90,6 +101,7 @@ function sharedDesign(phrase,rows){
     formatOf(row).forEach(f=>witness(formats,f,row));
     const observed=extractListingCharacteristics(row);
     for(const claim of observed?.audiences||[])witness(details,'for '+claim.value,row);
+    for(const claim of observed?.functions||[])if(usable(claim.value))witness(details,'to '+claim.value,row);
     const text=row.title+' '+(row.tags||[]).join(' ');
     for(const tag of row.tags||[]){
       const words=terms(tag);
@@ -102,8 +114,19 @@ function sharedDesign(phrase,rows){
     if(/\b(personali[sz]ed|custom made)\b/i.test(text))witness(details,'personalized',row);
     if(/\b(printable|print at home)\b/i.test(text))witness(details,'print at home',row);
   }
-  const strongest=map=>[...map.values()].filter(e=>e.shops.size>=2).sort((a,b)=>b.shops.size-a.shops.size||a.value.localeCompare(b.value))[0]||null;
-  return {format:strongest(formats),detail:strongest(details),variant:strongest(variants)};
+  let cohort=rows;
+  function strongest(map){
+    const options=[...map.values()].map(e=>{
+      const matching=cohort.filter(r=>e.ids.has(String(r.id)));
+      return {...e,matching,shops:new Set(matching.map(r=>String(r.shopId))),ids:new Set(matching.map(r=>String(r.id)))};
+    }).filter(e=>e.shops.size>=2).sort((a,b)=>b.shops.size-a.shops.size||a.value.localeCompare(b.value));
+    const choice=options[0];
+    if(!choice)return null;
+    cohort=choice.matching;
+    return {value:choice.value,shops:choice.shops,ids:choice.ids};
+  }
+  const format=strongest(formats),detail=strongest(details),variant=strongest(variants);
+  return {format,detail,variant};
 }
 
 export function selectResearchBatch(seed,markets,max=3) {
@@ -122,10 +145,15 @@ export function selectResearchBatch(seed,markets,max=3) {
   const broadSellerBase=seedMarket && new Set(seedMarket.listings.map(r=>r.shopId).filter(Boolean)).size>1;
   const specific = viable.filter(m => !m.isSeed && !terms(m.phrase).every(t=>terms(seed).includes(t)) &&
     (!broadSellerBase || new Set(m.listings.map(r=>r.shopId).filter(Boolean)).size>1));
-  const candidates=specific.length?specific:seedMarket?[seedMarket]:viable;
+  const candidates=seedMarket?.componentOnly?[seedMarket]:specific.length?specific:seedMarket?[seedMarket]:viable;
   const independent=candidates.filter(m=>new Set(m.listings.map(r=>r.shopId).filter(Boolean)).size>=2);
+  function describesBoth(a,b){
+    const rows=a.listings.filter(r=>listingRelevance(b.phrase,r)!=='irrelevant');
+    return rows.length>=a.listings.length/2 && new Set(rows.map(r=>r.shopId).filter(Boolean)).size>=2;
+  }
   for (const market of independent.length?independent:candidates) {
     if (selected.some(other => key(other.phrase)===key(market.phrase) ||
+      describesBoth(market,other) || describesBoth(other,market) ||
       market.listingIds.some(id=>other.listingIds.includes(id)) &&
       market.listingIds.filter(id=>other.listingIds.includes(id)).length >= .5*Math.min(other.listingIds.length,market.listingIds.length))) continue;
     selected.push(market);
@@ -193,7 +221,7 @@ export function chooseProductTarget(assessments) {
   const designOrder=(a,b)=>Number(Boolean(b.design.format))-Number(Boolean(a.design.format)) ||
     Number(Boolean(b.design.detail))-Number(Boolean(a.design.detail));
   const freshShops=a=>a.comparablePeriod && a.timely ? a.commercial.independent : 0;
-  const ordered = assessments.filter(a=>a.exemplar || a.commercial.comparable.length).sort((a,b)=>Number(b.recommended)-Number(a.recommended) ||
+  const ordered = assessments.filter(a=>a.exemplar || a.direction.componentOnly || a.commercial.comparable.length).sort((a,b)=>Number(b.recommended)-Number(a.recommended) ||
     freshShops(b)-freshShops(a) || Number(b.demand>0&&!b.outdatedDemand)-Number(a.demand>0&&!a.outdatedDemand) || designOrder(a,b));
   const supported=ordered.filter(a=>a.recommended);
   function dominates(a,b){

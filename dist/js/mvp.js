@@ -68,8 +68,8 @@ async function begin(value){
         try{
           const other=await search(query);
           sources.push(`${query} · related formats (${other.sample.length} listings, ${other.fetchedAt})`);
-          const adjacent=selectResearchBatch(subject,discoverProductMarkets(subject,other.sample));
-          if(adjacent.length){markets=adjacent;rows=rows.concat(other.sample);}
+          rows=rows.concat(other.sample);
+          markets=selectResearchBatch(seed,discoverProductMarkets(seed,rows));
         }catch{sources.push(`${query} unavailable`);}
       }
     }

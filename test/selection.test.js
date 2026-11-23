@@ -10,6 +10,15 @@ const listings=[
   {id:'3',listingType:'download',title:'Horror Movie Poster for Gothic Film Fans',tags:['horror movie poster'],description:'Poster for gothic film fans'},
   {id:'4',listingType:'download',title:'Horror Movie Poster for Gothic Film Fans',tags:['horror movie poster'],description:'Poster for gothic film fans'}
 ];
+test('requested functionality outranks adjacent products that advertise it as an included feature',()=>{
+  const rows=['Ledger','Journal','Tracker','Workbook'].map((kind,i)=>({id:String(i+1),shopId:String(i+1),listingType:'download',
+    title:'Kiln '+kind+', glaze yield calculator included',tags:['glaze yield calculator']}));
+  const batch=selectResearchBatch('glaze yield calculator',discoverProductMarkets('glaze yield calculator',rows));
+  assert.deepEqual(batch.map(m=>m.phrase),['glaze yield calculator']);
+  const report=assessDirection(batch[0],{sample:rows});
+  assert.equal(report.etsy.direct.length,0);
+  assert.match(renderDecision(chooseProductTarget([report]),[report]),/Verify whether sellers offer it separately/);
+});
 test('independent corroboration separates a proposed configuration from one seller’s seasonal edition',()=>{
   const rows=[
     ['a','Christmas animal coloring book for kids','PDF'],

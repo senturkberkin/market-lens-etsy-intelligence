@@ -13,7 +13,8 @@ function competitors(a){
   const measured=new Set(a.commercial.records.map(r=>String(r.id)));
   const rows=[
     ...a.commercial.records,
-    ...a.etsy.direct.filter(r=>!measured.has(String(r.id))).map(etsy=>({...etsy,etsy,classification:'direct'}))
+    ...a.etsy.direct.filter(r=>!measured.has(String(r.id))).map(etsy=>({...etsy,etsy,classification:'direct'})),
+    ...(a.direction.componentOnly?a.direction.listings.filter(r=>!measured.has(String(r.id)) && !a.etsy.direct.some(d=>d.id===r.id)).map(etsy=>({...etsy,etsy,classification:'advertised in listing; standalone identity unconfirmed'})):[])
   ];
   return `<details class="provider-detail"><summary>${esc(a.direction.phrase)} · inspect competitors and measurements</summary>
   <p>Exact keyword · ${esc(a.exact?.keyword||a.direction.phrase)}. Alura competition estimate · ${num(a.exact?.competingListings)}. Keyword observation · ${date(a.exact?.asOf)}.</p>
@@ -30,10 +31,17 @@ export function renderDecision(decision,items){
   const a=decision.winner;
   if(!a)return '<h2>Blocked research</h2><p>The retrieved listings did not identify a relevant downloadable product by title. No commercial request is proposed.</p>';
   const facts=[a.design.variant,a.design.detail,a.design.format].filter(Boolean);
-  const configuration=[a.direction.phrase,...facts.map(f=>f.value)].join(' · ');
+  const {format,detail,variant}=a.design;
+  const use=detail?.value==='print at home'?' for home printing':
+    detail?.value?.startsWith('for ')||detail?.value?.startsWith('to ')?' '+detail.value:'';
+  const kind=['personalized','editable'].includes(detail?.value)?detail.value+' ':'';
+  const configuration=`Prototype one ${kind}edition of “${a.direction.phrase}”${use}.`+
+    (format?` Supply it in ${format.value} format.`:'')+
+    (variant?` Focus the sample on “${variant.value}”.`:'');
   const measured=items.some(i=>i.exact||i.commercial.sampled);
   const rationale=measured?
     `Exact monthly searches: ${num(a.demand)}. Dated direct sales estimates: ${a.commercial.populated.length}. Median: ${num(a.sales.median)}. Identified shops with positive estimates: ${a.commercial.independent}.`:
+    a.direction.componentOnly?`${a.direction.listings.length} downloadable listings advertise this item. Verify whether sellers offer it separately before choosing a specification.`:
     `Etsy supplied ${a.etsy.direct.length} comparable downloads. ${facts.length?'Repeated design choices give this query a specific configuration to test.':'The sample establishes an offering. Its best configuration is still open.'}`;
   const next=decision.status==='supported'?'Prototype a small original edition and test its asking price with buyers.':
     !measured?'Validate exact keyword demand and recent sales for these product formats.':
@@ -45,7 +53,7 @@ export function renderDecision(decision,items){
     'Test buyer preference between the supported configurations before choosing a prototype.';
   return `<section class="recommendation"><p class="eyebrow">${labels[decision.status]}</p>
   <h2>${decision.status==='supported'?'Product to prototype':'Provisional research priority'} · ${esc(a.direction.phrase)}</h2>
-  <p><b>Proposed first edition</b> · ${esc(configuration)}. Start with one usable sample.</p>
+  <p><b>${a.direction.componentOnly&&!a.exemplar?'Standalone concept to validate':'Proposed first edition'}</b> · ${esc(configuration)}</p>
   ${facts.length?`<p>${facts.map(f=>esc(f.value)+' appears in '+f.ids.size+' direct listings across '+f.shops.size+' shops').join('. ')}.</p>`:''}
   <p>${rationale} ${decision.compared?'This market leads on at least one of demand, active sellers, median sales or seller diversification and matches or exceeds the other supported options on each.':decision.status==='multiple'?'Commercial preference remains unresolved.':''}</p>
   <p><b>Next action</b> · ${next}</p></section>

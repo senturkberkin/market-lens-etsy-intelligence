@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {assessDirection} from '../dist/js/selection.js';
+import {assessDirection,chooseProductTarget} from '../dist/js/selection.js';
+import {renderDecision} from '../dist/js/selection-view.js';
 
 // Optional private replay. CI never contacts a provider or downloads a replacement.
 test('recorded Alura search · compare the observed product formats',async t=>{
@@ -23,4 +24,10 @@ test('recorded Alura search · compare the observed product formats',async t=>{
     assert.equal(item.demand,null);assert.equal(item.recommended,false);
     assert.equal(item.commercial.records.some(r=>r.matched),false);
   }
+  const decision=chooseProductTarget([ticket,bundle]);
+  assert.equal(decision.status,'multiple');
+  const rendered=renderDecision(decision,[ticket,bundle]);
+  assert.match(rendered,/Commercial preference remains unresolved/);
+  assert.match(rendered,/Largest identified shop accounts for 5 of 5/);
+  assert.doesNotMatch(rendered,/Product to prototype/);
 });
