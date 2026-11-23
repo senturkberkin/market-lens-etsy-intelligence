@@ -30,6 +30,15 @@ function competitors(a){
 export function renderDecision(decision,items){
   const a=decision.winner;
   if(!a)return '<h2>Blocked research</h2><p>The retrieved listings did not identify a relevant downloadable product by title. No commercial request is proposed.</p>';
+  if(a.direction.componentOnly || a.etsy.direct.length && a.etsy.shops<2 && !a.commercial.sampled){
+    const leads=a.direction.componentOnly?a.direction.listings:a.etsy.direct;
+    return `<section class="recommendation"><p class="eyebrow">Preliminary product direction</p>
+      <h2>Research lead · ${esc(a.direction.phrase)}</h2>
+      <p>${a.direction.componentOnly?'The sampled sellers mention this term in descriptions of other products. Verify whether sellers offer it separately before choosing a specification.':'One seller’s wording identifies a lead. Independent suppliers have yet to corroborate the deliverable and its use.'}</p>
+      <p><b>Evidence to follow</b> · ${leads.slice(0,3).map(source).join(' · ')}</p>
+      <p>Exact search demand and direct recent sales are unmeasured.</p></section>
+      ${items.map(competitors).join('')}`;
+  }
   const facts=[a.design.variant,a.design.detail,a.design.format].filter(Boolean);
   const {format,detail,variant}=a.design;
   const use=detail?.value==='print at home'?' for home printing':

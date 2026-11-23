@@ -45,21 +45,25 @@ export function listingIdentity(listing) {
 // contextual modifier may be a buying purpose. Preserve it when sellers
 // explicitly advertise different uses for otherwise identical products.
 const useWords = value=>wordTokens(value).filter(t=>!['to','for','the','my','your','and'].includes(t));
+const spelling = token=>token.replace(/our(?=ing$|s?$)/,'or');
 const actionFamilies=[['track','tracking','record','recording','log','logging'],['compute','computing','calculate','calculating']];
 const usageKey = value=>useWords(value).map(w=>actionFamilies.find(f=>f.includes(w))?.[0]||w).sort().join(' ');
 function useClaim(row,core) {
   const id=listingIdentity(row);
-  const explicit=id.purposes.find(p=>p.field==='title') || id.purposes.find(p=>
-    useWords(p.value).some(w=>!useWords(core).includes(w) && wordTokens(row.title).includes(w)));
+  const coreWords=useWords(core).map(spelling);
+  const explicit=id.purposes.find(p=>p.field==='title' && useWords(p.value).length>=2 &&
+    /^(?:\w+ing\s|.*\bto\b)/i.test(p.value+' '+p.quote) &&
+    useWords(p.value).some(w=>!coreWords.includes(spelling(w))));
   if(explicit)return explicit;
   // A qualified occupational/activity phrase can distinguish two uses even
   // if no seller writes "used for". Keep its exact text and its inferred status.
   for(const part of titleParts(row.title).slice(1)){
     const name=productName(part),tokens=useWords(name);
     if(tokens.length<2 || tokens.length>6)continue;
-    const qualifier=tokens.slice(0,-1).find(w=>!useWords(core).includes(w) && /ing$/.test(w));
-    if(qualifier && !id.formats.some(f=>f.value===qualifier))
-      return {...id.core,value:qualifier,quote:part,kind:'inferred use'};
+    const qualifier=tokens.slice(0,-1).find(w=>!coreWords.includes(spelling(w)) && /ing$/.test(w));
+    if(qualifier && tokens.length>=3 && tokens.slice(0,-1).some(w=>coreWords.includes(spelling(w))) &&
+       !id.formats.some(f=>f.value===qualifier) && !coreWords.some(w=>/ing$/.test(w)))
+      return {...id.core,value:name,quote:part,kind:'inferred use'};
   }
 }
 export function scopeMatches(scope,listing,classifyName) {
@@ -67,6 +71,7 @@ export function scopeMatches(scope,listing,classifyName) {
   if (!labels.includes('direct')) return labels.includes('adjacent')?'adjacent':labels.includes('uncertain')?'uncertain':'irrelevant';
   if (!scope.purpose) return 'direct';
   const id=listingIdentity(listing);
+  if(scope.purpose===scope.query && classifyName(scope.query,listing)==='direct')return 'direct';
   const use=useClaim(listing,scope.core);
   if ([...id.purposes,use].some(p=>p && usageKey(p.value)===usageKey(scope.purpose))) return 'direct';
   return use?'adjacent':'uncertain';
@@ -89,8 +94,7 @@ export function identityScopes(name,rows) {
     const ids=members.map(listingIdentity);
     const variations=ids.map(id=>({...id.core,value:useWords(id.core.value)
       .filter(w=>!useWords(name).includes(w)).join(' '),kind:'observed modifier'})).filter(v=>v.value);
-    const phrase=claim?.kind==='inferred use' && ids.every(id=>id.core.value===ids[0].core.value) &&
-      useWords(ids[0].core.value).includes(purpose)?ids[0].core.value:purpose?name+' for '+purpose:name;
+    const phrase=claim?.kind==='inferred use'?claim.value:purpose?name+' for '+purpose:name;
     const identity={names:[name],core:name,purpose,query:phrase,variations,
       evidence:ids,listingIds:members.map(r=>String(r.id))};
     return {identity,phrase,members};

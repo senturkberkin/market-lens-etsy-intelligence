@@ -40,7 +40,7 @@ test('Q2 · adapt the approved requests to demand and retain the first results o
 test('holdout · enter a seed, inspect rendered priorities, approve simulated research once',async()=>{
   const handlers={},input={},button={},form={querySelector:()=>button,addEventListener:(event,fn)=>handlers[event]=fn};
   let body='',ready;
-  const result={addEventListener:(event,fn)=>handlers[event]=fn,set innerHTML(v){body=v;if(v.includes('</table>')||v.includes('Blocked research'))ready?.();}};
+  const result={addEventListener:(event,fn)=>handlers[event]=fn,set innerHTML(v){body=v;if(v.includes('Etsy searches ·')||v.includes('Blocked research'))ready?.();}};
   globalThis.document={querySelector:s=>({'#keyword':input,'#result':result,'#search-form':form})[s]};
   globalThis.location={origin:'https://fixture.invalid',search:''};globalThis.history={replaceState(){}};
   const savedFetch=globalThis.fetch;

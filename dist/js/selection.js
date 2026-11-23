@@ -113,7 +113,7 @@ export function discoverProductMarkets(seed, listings, minimum = 2, shopScope = 
     const names=[phrase,...[...aliases].filter(([,shops])=>shops.size>=2).map(([name])=>name)];
     if(names.length>1)evidence=rows.filter(r=>names.some(n=>classifyComparable(n,r)==='direct'));
     for(const scope of identityScopes(phrase,evidence)){
-      scope.identity.names=names;
+      scope.identity.names=[...new Set([...names,scope.identity.purpose===scope.phrase?scope.phrase:phrase])];
       if(scope.phrase.length>80)continue;
       markets.push({phrase:scope.phrase,identity:scope.identity,listingIds:scope.identity.listingIds,
         listings:scope.members,design:sharedDesign(phrase,scope.members),isSeed:key(scope.phrase)===key(seed),

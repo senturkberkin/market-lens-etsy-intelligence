@@ -49,3 +49,11 @@ test('co-advertised names across shops can identify a new comparable without tra
   assert.equal(batch[0].listingIds.length,3);
   assert.equal(assessDirection(batch[0],{sample:rows}).etsy.direct.length,3);
 });
+
+test('a spelling variant or isolated activity word in alternate clauses cannot become a paid use',()=>{
+  const rows=['Reef','Reef','Dune','Dune'].map((theme,i)=>listing(i+1,
+    theme+' Colouring Book | Coloring Book | Early Learning Pages',
+    {tags:[theme.toLowerCase()+' colouring book']}));
+  const batch=select('colouring book',rows);
+  assert.deepEqual(batch.map(m=>m.phrase),['colouring book']);
+});
