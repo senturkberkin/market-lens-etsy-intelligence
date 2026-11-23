@@ -8,6 +8,8 @@ const prose = /\b(?:gift|present|perfect|our|your|please|sale|each|best|these|th
 const terms = text => wordTokens(text).filter(t => !['a','an','the','and','for','with','of'].includes(t));
 const key = text => [...new Set(terms(text))].sort().join(' ');
 const packaging=new Set(['pdf','png','jpg','jpeg','svg','file','bundle','set','download','digital']);
+const encoding=/\b(?:pdf|svg|png|jpeg|jpg|xlsx|stl|dxf|epub|psd|wif|google sheets|excel|canva|procreate|notion)\b/gi;
+const formatOf=row=>[...new Set((row.title+' '+(row.tags||[]).join(' ')).match(encoding)?.map(t=>t.toUpperCase().replace(/^JPEG$/,'JPG'))||[])];
 const unique = rows => [...new Map(rows.filter(r => r?.id != null && r.id !== '').map(r => [String(r.id),r])).values()];
 function identity(title) {
   let first = clauses(title)[0] || '';
@@ -18,6 +20,8 @@ function identity(title) {
 function usable(phrase) {
   const words = terms(phrase);
   return words.length >= 2 && words.length <= 8 && phrase.length <= 80 && !prose.test(phrase) &&
+    !/^(?:\d+(?:[.,/-]\d+)*|vol(?:ume)?|part|page|booklet no)\b/i.test(phrase) &&
+    !/\b(?:pack of|vol(?:ume)?|version|part|no\.?)?\s*\d+$/.test(phrase) &&
     /^[\p{L}\p{N}][\p{L}\p{N} '&/-]*$/u.test(phrase) && !/\b(?:only|copyright|reserved|listing|item)\b/i.test(phrase) &&
     !/\b(?:files?|edition|only)$/i.test(phrase);
 }
@@ -44,24 +48,15 @@ export function classifyComparable(phrase, listing) {
 export function discoverProductMarkets(seed, listings, minimum = 2, shopScope = false) {
   const rows = unique(listings || []).filter(r => r.listingType === 'download' && (shopScope || listingRelevance(seed,r) !== 'irrelevant'));
   const phrases = new Set([clean(seed)]);
-  const endings=new Map();
   for (const row of rows) {
     const head = identity(row.title);
     if((shopScope || listingRelevance(seed,{title:row.title})!=='irrelevant') && !terms(head).some((t,i,all)=>all.indexOf(t)!==i)){
       phrases.add(head);
-      const words=head.split(/\s+/);
-      for(let size=2;size<=Math.min(6,words.length);size++){
-        const ending=words.slice(-size).join(' ');
-        if(!terms(ending).some(t=>terms(seed).includes(t)))continue;
-        if(!endings.has(ending))endings.set(ending,new Set());
-        endings.get(ending).add(head);
-      }
     }
     for (const tag of row.tags || []) {
       if (listingRelevance(seed,{title:tag}) !== 'irrelevant' && classifyComparable(tag,row) === 'direct') phrases.add(clean(tag));
     }
   }
-  for(const [phrase,heads] of endings)if(heads.size>=2)phrases.add(phrase);
   const markets = [];
   for (const phrase of phrases) {
     if (!usable(phrase) || /^(?:and|with|for|of|the)\b/.test(phrase)) continue;
@@ -69,16 +64,46 @@ export function discoverProductMarkets(seed, listings, minimum = 2, shopScope = 
     if(!shopScope && theme && listingRelevance(theme,{title:phrase})==='irrelevant') {
       // Permit a full product name from a relevant title as an exploratory
       // lead. Partial suffixes and generic tags cannot use this exception.
-      if(minimum!==1 || !rows.some(r=>identity(r.title)===phrase && listingRelevance(theme,{title:r.title})!=='irrelevant'))continue;
+      const named=rows.filter(r=>identity(r.title)===phrase);
+      if(!named.length || (minimum>1 && new Set(named.map(r=>r.shopId).filter(Boolean)).size<2))continue;
     }
     const evidence = rows.filter(row => classifyComparable(phrase,row) === 'direct');
     if (evidence.length < minimum) continue;
     const listingIds = evidence.map(r => String(r.id)).sort();
-    markets.push({phrase, listingIds, listings:evidence, isSeed:key(phrase)===key(seed),
+    markets.push({phrase, listingIds, listings:evidence, design:sharedDesign(phrase,evidence), isSeed:key(phrase)===key(seed),
       sourceListings:evidence.slice(0,4), reason:`${listingIds.length} downloadable listings describe this product in their titles.`});
   }
-  const shops=m=>new Set(m.listings.map(r=>r.shopId).filter(Boolean)).size;
-  return markets.sort((a,b) => shops(b)-shops(a) || b.listings.length-a.listings.length || a.phrase.length-b.phrase.length || a.phrase.localeCompare(b.phrase));
+  return markets.sort((a,b) => Number(Boolean(b.design.format))-Number(Boolean(a.design.format)) ||
+    Number(Boolean(b.design.detail))-Number(Boolean(a.design.detail)) || a.phrase.length-b.phrase.length || a.phrase.localeCompare(b.phrase));
+}
+
+// Each design choice needs separate shop witnesses. Product identity, format,
+// and audience remain independent facts; unique characteristics stay in citations.
+function sharedDesign(phrase,rows){
+  const formats=new Map(), details=new Map(), variants=new Map();
+  function witness(map,value,row){
+    if(!row.shopId || !value)return;
+    const k=clean(value), entry=map.get(k)||{value,shops:new Set(),ids:new Set()};
+    entry.shops.add(String(row.shopId));entry.ids.add(String(row.id));map.set(k,entry);
+  }
+  for(const row of rows){
+    formatOf(row).forEach(f=>witness(formats,f,row));
+    const observed=extractListingCharacteristics(row);
+    for(const claim of observed?.audiences||[])witness(details,'for '+claim.value,row);
+    const text=row.title+' '+(row.tags||[]).join(' ');
+    for(const tag of row.tags||[]){
+      const words=terms(tag);
+      if(!usable(clean(tag))||words.length>5||!words.some(t=>terms(phrase).includes(t)) ||
+        !words.some(t=>!terms(phrase).includes(t)&&!packaging.has(t)) ||
+        !words.every(t=>terms(row.title).includes(t)))continue;
+      witness(variants,clean(tag),row);
+    }
+    if(/\b(editable|customizable|customisable)\b/i.test(text))witness(details,'editable',row);
+    if(/\b(personali[sz]ed|custom made)\b/i.test(text))witness(details,'personalized',row);
+    if(/\b(printable|print at home)\b/i.test(text))witness(details,'print at home',row);
+  }
+  const strongest=map=>[...map.values()].filter(e=>e.shops.size>=2).sort((a,b)=>b.shops.size-a.shops.size||a.value.localeCompare(b.value))[0]||null;
+  return {format:strongest(formats),detail:strongest(details),variant:strongest(variants)};
 }
 
 export function selectResearchBatch(seed,markets,max=3) {
@@ -88,7 +113,7 @@ export function selectResearchBatch(seed,markets,max=3) {
     const words=terms(m.phrase);
     // Adding a container/encoding alone leaves the proposed product undefined.
     const extra=words.filter(t=>!theme.includes(t));
-    if(extra.length && extra.every(t=>packaging.has(t)))return false;
+    if(extra.length && extra.every(t=>/^\d+$/.test(t)||packaging.has(t)))return false;
     if(theme.length===1 && words.at(-1)===theme[0] &&
       !m.listings.some(r=>usable(identity(r.title)) && key(identity(r.title))===key(m.phrase)))return false;
     return true;
@@ -97,7 +122,9 @@ export function selectResearchBatch(seed,markets,max=3) {
   const broadSellerBase=seedMarket && new Set(seedMarket.listings.map(r=>r.shopId).filter(Boolean)).size>1;
   const specific = viable.filter(m => !m.isSeed && !terms(m.phrase).every(t=>terms(seed).includes(t)) &&
     (!broadSellerBase || new Set(m.listings.map(r=>r.shopId).filter(Boolean)).size>1));
-  for (const market of specific.length ? specific : seedMarket?[seedMarket]:viable) {
+  const candidates=specific.length?specific:seedMarket?[seedMarket]:viable;
+  const independent=candidates.filter(m=>new Set(m.listings.map(r=>r.shopId).filter(Boolean)).size>=2);
+  for (const market of independent.length?independent:candidates) {
     if (selected.some(other => key(other.phrase)===key(market.phrase) ||
       market.listingIds.some(id=>other.listingIds.includes(id)) &&
       market.listingIds.filter(id=>other.listingIds.includes(id)).length >= .5*Math.min(other.listingIds.length,market.listingIds.length))) continue;
@@ -147,28 +174,37 @@ export function assessDirection(direction,etsy,commercial) {
   const prices = Object.fromEntries([...new Set(direct.filter(r=>Number.isFinite(r.price)&&r.currency).map(r=>r.currency))].map(c=>[c,distribution(direct.filter(r=>r.currency===c).map(r=>r.price))]));
   const exact = commercial?.keyword && clean(commercial.keyword.keyword)===clean(direction.phrase) ? commercial.keyword : null;
   const demand = exact?.estimatedSearchesMonthly ?? null;
-  const periods = new Set(populated.map(r=>/^\d{4}-\d{2}/.exec(r.as_of)?.[0] || null));
+  const periods = new Set(populated.map(r=>Number.isFinite(Date.parse(r.as_of))?r.as_of.slice(0,7):null));
   const comparablePeriod = periods.size===1 && !periods.has(null);
   const referenceMonth=etsy?.fetchedAt?.slice(0,7);
   const timely=!referenceMonth || [...periods][0]===referenceMonth;
-  const recommended = demand>0 && comparablePeriod && timely && independent>=2 && direct.length>=2;
+  const referenceTime=Date.parse(etsy?.fetchedAt);
+  const demandAge=(referenceTime-Date.parse(exact?.asOf))/86400000;
+  const outdatedDemand=Number.isFinite(demandAge) && (demandAge>93 || demandAge< -1);
+  const recommended = demand>0 && !outdatedDemand && comparablePeriod && timely && independent>=2 && direct.length>=2;
   const exemplar = [...direct].sort((a,b)=>Number(!usable(identity(a.title)))-Number(!usable(identity(b.title))) ||
     Number(identity(a.title)===clean(direction.phrase))-Number(identity(b.title)===clean(direction.phrase)) || a.title.length-b.title.length)[0];
   return {direction, etsy:{direct,adjacent,date:etsy?.fetchedAt,shops:new Set(direct.map(r=>r.shopId).filter(Boolean)).size}, commercial:{records,comparable,populated,active,independent,shops:shops(populated),sampled:commercial?.productStatus==='sampled'||records.length>0}, prices,sales,exact,demand,recommended,comparablePeriod,exemplar,
-    topShop,sampleTotal,timely,characteristics:extractListingCharacteristics(exemplar),audience:`buyers seeking ${direction.phrase}`};
+    topShop,sampleTotal,timely,outdatedDemand,design:sharedDesign(direction.phrase,direct),audience:`buyers seeking ${direction.phrase}`};
 }
 
 export function chooseProductTarget(assessments) {
-  const ordered = assessments.filter(a=>a.exemplar).sort((a,b)=>Number(b.recommended)-Number(a.recommended) ||
-    b.commercial.independent-a.commercial.independent || b.etsy.shops-a.etsy.shops || b.etsy.direct.length-a.etsy.direct.length || a.direction.phrase.localeCompare(b.direction.phrase));
-  const winner=ordered[0];
+  // With equivalent design evidence, the input order is the query order only.
+  const designOrder=(a,b)=>Number(Boolean(b.design.format))-Number(Boolean(a.design.format)) ||
+    Number(Boolean(b.design.detail))-Number(Boolean(a.design.detail));
+  const freshShops=a=>a.comparablePeriod && a.timely ? a.commercial.independent : 0;
+  const ordered = assessments.filter(a=>a.exemplar || a.commercial.comparable.length).sort((a,b)=>Number(b.recommended)-Number(a.recommended) ||
+    freshShops(b)-freshShops(a) || Number(b.demand>0&&!b.outdatedDemand)-Number(a.demand>0&&!a.outdatedDemand) || designOrder(a,b));
   const supported=ordered.filter(a=>a.recommended);
-  const sameMonth = supported.every(a=>a.commercial.populated[0]?.as_of?.slice(0,7)===winner?.commercial.populated[0]?.as_of?.slice(0,7));
-  const decisive=winner?.recommended && (supported.length===1 || sameMonth && supported.slice(1).every(other=>
-    winner.commercial.independent>other.commercial.independent &&
-    winner.sales.median>=other.sales.median &&
-    winner.commercial.populated.length===other.commercial.populated.length &&
-    winner.commercial.populated.length===winner.commercial.comparable.length &&
-    other.commercial.populated.length===other.commercial.comparable.length));
-  return {status:decisive?'supported':ordered.length>1?'multiple':winner?'preliminary':'blocked',winner,alternatives:ordered.slice(1)};
+  function dominates(a,b){
+    if(a.commercial.populated[0].as_of.slice(0,7)!==b.commercial.populated[0].as_of.slice(0,7) ||
+      a.sales.values.length!==b.sales.values.length || [a,b].some(x=>x.sales.values.length!==x.commercial.comparable.length))return false;
+    const dimensions=x=>[x.demand,x.commercial.independent,x.sales.median,-x.topShop/x.sampleTotal];
+    const left=dimensions(a),right=dimensions(b);
+    return left.every((v,i)=>v>=right[i]) && left.some((v,i)=>v>right[i]);
+  }
+  const leader=supported.find(a=>supported.every(b=>a===b||dominates(a,b)));
+  const winner=leader||ordered[0];
+  return {status:leader?'supported':ordered.length>1?'multiple':winner?'preliminary':'blocked',winner,
+    compared:Boolean(leader && supported.length>1),alternatives:ordered.filter(a=>a!==winner)};
 }

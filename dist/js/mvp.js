@@ -38,7 +38,7 @@ function show(commercial){
   result.innerHTML=renderDecision(chooseProductTarget(assessments),assessments)+
     `<p class="source">Etsy searches · ${session.sources.map(esc).join(' · ')}</p>`+
     (commercial?.interrupted?'<p class="notice">Alura interrupted the batch. Completed observations are included.</p>':'')+
-    (!commercial?plan(session.paid):'');
+    (!commercial?(plan(session.paid)|| (assessments.length?'<p class="notice">Exploratory lead only. A commercial comparison needs identifiable examples from a second shop.</p>':'')):'');
 }
 
 async function begin(value){
@@ -73,8 +73,12 @@ async function begin(value){
         }catch{sources.push(`${query} unavailable`);}
       }
     }
-    const paid=markets;
-    if(!markets.length)markets=selectResearchBatch(seed,discoverProductMarkets(seed,rows,1,shopScope));
+    const paid=markets.filter(m=>new Set(m.listings.map(row=>row.shopId).filter(Boolean)).size>=2);
+    if(paid.length)markets=paid;
+    else{
+      const leads=markets.length?markets:selectResearchBatch(seed,discoverProductMarkets(seed,rows,1,shopScope));
+      markets=leads.slice(0,1);
+    }
     session={data:{...data,sample:rows},markets,paid,sources};
     show();
     history.replaceState(null,'',`?q=${encodeURIComponent(value)}`);

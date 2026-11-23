@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {assessDirection,chooseProductTarget,classifyComparable,distribution} from '../dist/js/selection.js';
 import {runCommercialResearch} from '../api/commercial-research.js';
 
-const row=(id,title,extra={})=>({id:String(id),title,listingType:'download',tags:[],url:'https://www.etsy.com/listing/'+id,...extra});
+const row=(id,title,extra={})=>({id:String(id),shopId:String(id),title,listingType:'download',tags:[],url:'https://www.etsy.com/listing/'+id,...extra});
 const iso='2026-11-12T00:00:00Z';
-const probe=(title,price,currency)=>row(title,title,{price,currency});
+const probe=(title,price,currency)=>row(title,title,{price,currency,shopId:null});
 
 test('Q1 · comparable identity, missing shops, period consistency and per-currency quantiles',()=>{
   const phrase='orchard graft register';
@@ -57,15 +57,29 @@ test('holdout · enter a seed, inspect rendered priorities, approve simulated re
       globalThis.fetch=async(url,opts)=>{
         if(opts?.method==='POST'){
           writes++;const request=JSON.parse(opts.body);
-          assert.equal(request.maxBudget,11);assert.equal(request.approved,true);
+          assert.equal(request.maxBudget,request.directions.length*11);assert.equal(request.approved,true);
+          if(seed==='cyanotype'){
+            assert.equal(request.directions.length,2);
+            return {ok:true,json:async()=>({results:request.directions.map((direction,index)=>({
+              direction,keyword:{keyword:direction,estimatedSearchesMonthly:index?240:30,asOf:iso},
+              products:sample.filter(r=>r.title.toLowerCase().includes(direction)).map(r=>({...r,shop:{id:r.shopId},as_of:iso,sales:{est_last_month:index?8:1}}))
+            }))})};
+          }
           const direction=request.directions[0];
-          return {ok:true,json:async()=>({results:[{direction,keyword:{keyword:direction,estimatedSearchesMonthly:37},products:sample.map((r,i)=>({...r,shop:{id:i+1},as_of:iso,sales:{est_last_month:2+i}}))}]})};
+          return {ok:true,json:async()=>({results:[{direction,keyword:{keyword:direction,estimatedSearchesMonthly:37},products:sample.map((r,i)=>({...r,shop:{id:r.shopId},as_of:iso,sales:{est_last_month:2+i}}))}]})};
         }
         reads++;return {ok:true,json:async()=>({keyword:url.searchParams.get('keyword'),sample,fetchedAt:iso})};
       };
       input.value=seed;await new Promise(resolve=>{ready=resolve;handlers.submit({preventDefault(){}})});
       assert.match(body,new RegExp(status));assert.match(body,new RegExp(product,'i'));assert.equal(writes,0);
       if(!sample.length)assert.equal(reads,2);
+      if(seed==='cyanotype'){
+        const first=body.match(/Provisional research priority · ([^<]+)</)[1];
+        await new Promise(resolve=>{ready=resolve;handlers.click({target:{closest:()=>({disabled:false})}})});
+        assert.match(body,/Supported product target/);assert.match(body,/240/);
+        assert.notEqual(body.match(/Product to prototype · ([^<]+)</)[1],first);
+        assert.equal(writes,1);
+      }
       if(seed==='organ voicing'){
         const approve={disabled:false};await new Promise(resolve=>{ready=resolve;handlers.click({target:{closest:()=>approve}})});
         assert.match(body,/Supported product target/);assert.match(body,/2\.5 \/ 2\.75/);assert.equal(writes,1);

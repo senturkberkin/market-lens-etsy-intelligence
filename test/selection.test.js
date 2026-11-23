@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {discoverProductMarkets,selectResearchBatch,assessDirection,chooseProductTarget} from '../dist/js/selection.js';
 import {planCommercialResearch,normalizeProducts,runCommercialResearch} from '../api/commercial-research.js';
+import {renderDecision} from '../dist/js/selection-view.js';
 
 const listings=[
   {id:'1',listingType:'download',title:'Horror Movie PNG Bundle Digital Download',tags:['horror movie png bundle']},
@@ -9,6 +10,20 @@ const listings=[
   {id:'3',listingType:'download',title:'Horror Movie Poster for Gothic Film Fans',tags:['horror movie poster'],description:'Poster for gothic film fans'},
   {id:'4',listingType:'download',title:'Horror Movie Poster for Gothic Film Fans',tags:['horror movie poster'],description:'Poster for gothic film fans'}
 ];
+test('independent corroboration separates a proposed configuration from one seller’s seasonal edition',()=>{
+  const rows=[
+    ['a','Christmas animal coloring book for kids','PDF'],
+    ['b','Woodland animal coloring book','PDF'],
+    ['c','Volume 2 coloring book',''],
+    ['d','Series 2 coloring book','']
+  ].map(([id,title,format])=>({id,shopId:id,title,listingType:'download',tags:[format,'2 coloring book','animal coloring book']}));
+  const markets=selectResearchBatch('coloring book',discoverProductMarkets('coloring book',rows));
+  assert.deepEqual(markets.map(m=>m.phrase),['animal coloring book']);
+  const items=markets.map(m=>assessDirection(m,{sample:rows}));
+  const aboveFold=renderDecision(chooseProductTarget(items),items).split('<h2>Market comparison')[0];
+  assert.match(aboveFold,/PDF appears in 2 direct listings across 2 shops/);
+  assert.doesNotMatch(aboveFold,/Christmas|for kids|reference specification/i);
+});
 test('product markets come from unfamiliar listing evidence, not a category catalog',()=>{
   const markets=discoverProductMarkets('horror movie',listings);
   assert.ok(markets.some(item=>item.phrase.includes('horror movie')));

@@ -1,5 +1,6 @@
 // Local manual UI fixture only. Never used in production or bundled by the app.
 import http from 'node:http';
+import {runCommercialResearch} from './api/commercial-research.js';
 import {readFile} from 'node:fs/promises';
 import {join,extname,resolve} from 'node:path';
 
@@ -7,7 +8,7 @@ const root=resolve('dist');
 const sample=Array.from({length:40},(_,i)=>({
   id:i+1,title:i%2?'Weekly meal planner printable for families':'Wedding budget planner spreadsheet',
   tags:i%2?['family meal planner','weekly meal planner printable']:['wedding budget planner','wedding spreadsheet planner'],
-  listingType:'download',price:10+i/10
+  listingType:'download',price:10+i/10,currency:'USD',shopId:String(i+1)
 }));
 const types={'.html':'text/html','.css':'text/css','.js':'text/javascript'};
 http.createServer(async(req,res)=>{
@@ -36,13 +37,21 @@ http.createServer(async(req,res)=>{
     return;
   }
   if(url.pathname==='/api/commercial-research'&&req.method==='POST'){
-    let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
-      const directions=(JSON.parse(body||'{}').directions||[]).slice(0,3);
-      const results=directions.map((direction,index)=>({direction,
-        keyword:{keyword:direction,estimatedSearchesMonthly:420-index*70,competingListings:1200-index*120,asOf:'2026-11-01T00:00:00.000Z'},
-        products:[{id:`fixture-${index}-a`,title:`${direction} for families`,url:null,shop:{id:`shop-${index}-a`,name:`Fixture shop A`},sales:{est_last_month:3,est_monthly_avg:2,est_lifetime:22,est_trend_3m:.2},as_of:'2026-11-08T00:00:00.000Z'},
-          {id:`fixture-${index}-b`,title:`${direction} for families`,url:null,shop:{id:`shop-${index}-b`,name:`Fixture shop B`},sales:{est_last_month:1,est_monthly_avg:1,est_lifetime:8,est_trend_3m:null},as_of:'2026-11-08T00:00:00.000Z'}],total:{value:2}}));
-      res.setHeader('Content-Type','application/json');res.end(JSON.stringify({plan:{directions,maxCredits:directions.length*11,withinBudget:true},results,source:'Local synthetic fixture — not provider evidence',retrievedAt:new Date().toISOString()}));
+    let body='';req.on('data',chunk=>body+=chunk);req.on('end',async()=>{
+      const {directions,maxBudget,approved}=JSON.parse(body||'{}');
+      if(!approved){res.writeHead(400);res.end();return;}
+      const fetchImpl=async input=>{
+        const url=new URL(input),q=url.searchParams.get('q'),second=directions.indexOf(q)>0;
+        const as_of=new Date().toISOString();
+        let payload;
+        if(url.pathname.endsWith('/usage'))payload={plan:'free',credits:{remaining:33}};
+        else if(url.pathname.endsWith('/keywords'))payload={data:[{keyword:q,volume:{etsy_monthly:second?240:30},as_of}]};
+        else payload={data:[1,2].map(i=>({id:q+i,title:q,shop:{id:i},sales:{est_last_month:second?8:1},as_of}))};
+        return {ok:true,json:async()=>payload};
+      };
+      const batch=await runCommercialResearch(directions,{apiKey:'synthetic',fetchImpl,maxBudget});
+      res.setHeader('Content-Type','application/json');
+      res.end(JSON.stringify({...batch,source:'Local synthetic fixture'}));
     });return;
   }
   if(url.pathname==='/config.js'){

@@ -29,19 +29,26 @@ function competitors(a){
 export function renderDecision(decision,items){
   const a=decision.winner;
   if(!a)return '<h2>Blocked research</h2><p>The retrieved listings did not identify a relevant downloadable product by title. No commercial request is proposed.</p>';
-  const example=a.exemplar;
-  const purpose=a.characteristics?.audiences[0]?.value;
-  const detail=example.title.split(/[,|;:–—]/).map(t=>t.trim()).filter(Boolean);
-  const formats=[...new Set((example.title+' '+(example.tags||[]).join(' ')).match(/\b(?:pdf|svg|png|jpe?g|xlsx|dxf|stl|epub|psd|procreate|canva|goodnotes|notion|google sheets|excel)\b/gi)?.map(v=>v.toUpperCase())||[])];
-  const cue=detail.find(t=>t!==a.direction.phrase && t.split(/\s+/).length<=10 && !/[©®]|\b(?:sale|copyright|buy now)\b/i.test(t));
-  const configuration=[a.direction.phrase,formats.join(' / ') || 'digital download'].join(' · ');
-  const reason=a.recommended?`${num(a.demand)} estimated monthly searches and ${a.commercial.independent} identified shops with positive recent estimates.`:
-    `${a.etsy.direct.length} comparable Etsy download${a.etsy.direct.length===1?'':'s'} across ${num(a.etsy.shops)} identified shops. Free research prioritizes breadth of seller evidence.`;
+  const facts=[a.design.variant,a.design.detail,a.design.format].filter(Boolean);
+  const configuration=[a.direction.phrase,...facts.map(f=>f.value)].join(' · ');
+  const measured=items.some(i=>i.exact||i.commercial.sampled);
+  const rationale=measured?
+    `Exact monthly searches: ${num(a.demand)}. Dated direct sales estimates: ${a.commercial.populated.length}. Median: ${num(a.sales.median)}. Identified shops with positive estimates: ${a.commercial.independent}.`:
+    `Etsy supplied ${a.etsy.direct.length} comparable downloads. ${facts.length?'Repeated design choices give this query a specific configuration to test.':'The sample establishes an offering. Its best configuration is still open.'}`;
+  const next=decision.status==='supported'?'Prototype a small original edition and test its asking price with buyers.':
+    !measured?'Validate exact keyword demand and recent sales for these product formats.':
+    a.outdatedDemand?'Refresh the dated keyword estimate before prototyping.':
+    a.demand===null?'Obtain an exact demand observation for this product query.':
+    a.demand===0?'Test whether buyers search using a different observed name for this product.':
+    !a.timely||!a.comparablePeriod?'Compare direct sellers using a common recent measurement period.':
+    a.commercial.independent<2?'Look for a second independent seller with a positive estimate for this deliverable.':
+    'Test buyer preference between the supported configurations before choosing a prototype.';
   return `<section class="recommendation"><p class="eyebrow">${labels[decision.status]}</p>
-  <h2>${esc(a.direction.phrase)}</h2><p><b>First product to investigate</b> · ${esc(configuration)}.</p>
-  <p>${cue?`Reference specification · ${esc(cue)}. `:''}${purpose?`Seller-described audience · ${esc(purpose)}.`:'Buying purpose needs buyer validation.'} Source · ${source(example)}.</p>
-  <p>${reason} ${decision.status==='multiple'?'Start here for validation. The comparison leaves the commercial leader unresolved.':''}</p>
-  <p><b>Next action</b> · ${a.recommended?'Prototype one original example and test purchase intent at the observed asking prices.':a.demand==null?'Check exact search interest for “'+esc(a.direction.phrase)+'” and recent activity among sellers offering the same deliverable.':'Check recent sales for comparable downloads from a second independent shop before prototyping.'}</p></section>
+  <h2>${decision.status==='supported'?'Product to prototype':'Provisional research priority'} · ${esc(a.direction.phrase)}</h2>
+  <p><b>Proposed first edition</b> · ${esc(configuration)}. Start with one usable sample.</p>
+  ${facts.length?`<p>${facts.map(f=>esc(f.value)+' appears in '+f.ids.size+' direct listings across '+f.shops.size+' shops').join('. ')}.</p>`:''}
+  <p>${rationale} ${decision.compared?'This market leads on at least one of demand, active sellers, median sales or seller diversification and matches or exceeds the other supported options on each.':decision.status==='multiple'?'Commercial preference remains unresolved.':''}</p>
+  <p><b>Next action</b> · ${next}</p></section>
   <h2>Market comparison</h2><div class="table-wrap"><table><thead><tr>${['Market','Monthly searches','3m / annual change','Measured / direct Alura listings','Shops with activity','Recent estimates · median / Q3','Etsy price · median (IQR)','Evidence status'].map(v=>`<th>${v}</th>`).join('')}</tr></thead><tbody>
   ${items.map(i=>`<tr><td>${esc(i.direction.phrase)}</td><td>${num(i.demand)}</td><td>${trend(i.exact?.change3m)} / ${trend(i.exact?.changeYear)}</td><td>${i.commercial.sampled?i.commercial.populated.length+' / '+i.commercial.comparable.length:'—'}</td><td>${i.commercial.sampled?i.commercial.independent:'—'}</td><td>${num(i.sales.median)} / ${num(i.sales.q3)}</td><td>${prices(i)}</td><td>${i.recommended?'Commercial support':i.commercial.sampled||i.exact?'Partial commercial evidence':'Etsy supply only'}</td></tr>`).join('')}
   </tbody></table></div><p class="muted">— means unmeasured. Sales statistics describe direct products in the sales-ranked sample. Exact search demand and actual buyer conversion are separate measurements.</p>
