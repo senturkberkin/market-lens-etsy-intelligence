@@ -5,7 +5,12 @@ const clean=value=>String(value||'').trim().replace(/\s+/g,' ');
 const safeCount=value=>Number.isSafeInteger(value)&&value>=0?value:null;
 
 export const planCommercialResearch=(directions,maxBudget=33)=>{
-  const unique=[...new Set((Array.isArray(directions)?directions:[]).map(clean).filter(value=>value.length>=2&&value.length<=80))].slice(0,3);
+  const seen=new Set();
+  const unique=(Array.isArray(directions)?directions:[]).map(clean).filter(value=>{
+    const id=value.toLowerCase().split(' ').sort().join(' ');
+    if(value.length<2||value.length>80||seen.has(id))return false;
+    seen.add(id);return true;
+  }).slice(0,3);
   const cost=unique.length*11;
   return {directions:unique,maxCredits:cost,withinBudget:cost<=maxBudget};
 };
@@ -32,14 +37,22 @@ export async function runCommercialResearch(directions,{apiKey,fetchImpl=fetch,m
   if(String(usage.plan).toLowerCase()!=='free')throw new Error('Commercial research is limited to the Alura Free plan.');
   if(!Number.isSafeInteger(usage.credits?.remaining)||usage.credits.remaining<plan.maxCredits)throw new Error(`Commercial research needs up to ${plan.maxCredits} included credits; the account balance is insufficient.`);
   const results=[];
-  for(const direction of plan.directions){
+  let interrupted=false;
+  try { for(const direction of plan.directions){
     const keyword=await request(`/research/keywords?${new URLSearchParams({q:direction,language:'en'})}`);
     const exact=(keyword.data||[]).find(row=>clean(row.keyword).toLocaleLowerCase('en-US')===direction.toLocaleLowerCase('en-US'))||null;
-    const query=new URLSearchParams({q:direction,is_digital:'true',limit:'10',sort:'est_last_month',order:'desc',est_last_month_min:'0',fields:'title,url,shop,price,sales.est_last_month,sales.est_monthly_avg,sales.est_lifetime,sales.est_trend_3m'});
-    const products=await request(`/research/products?${query}`);
-    results.push({direction,keyword:exact?{keyword:exact.keyword,estimatedSearchesMonthly:safeCount(exact.volume?.etsy_monthly),competingListings:safeCount(exact.competition?.competing_listings),asOf:typeof exact.as_of==='string'?exact.as_of:null}:null,products:normalizeProducts(products),total:products.total||null});
+    results.push({direction,keyword:exact?{keyword:exact.keyword,estimatedSearchesMonthly:safeCount(exact.volume?.etsy_monthly),competingListings:safeCount(exact.competition?.competing_listings),change3m:Number.isFinite(exact.trend?.change_3m)?exact.trend.change_3m:null,changeYear:Number.isFinite(exact.trend?.change_yoy)?exact.trend.change_yoy:null,asOf:typeof exact.as_of==='string'?exact.as_of:null}:null,products:[],productStatus:'unqueried'});
   }
-  return {plan,results,source:'Alura API estimates',retrievedAt:new Date().toISOString()};
+  // Look up cheap exact demand first. If any positive measurement exists,
+  // reserve product pages for those options. Otherwise probe the first Etsy priority.
+  const positive=results.filter(r=>r.keyword?.estimatedSearchesMonthly>0).sort((a,b)=>b.keyword.estimatedSearchesMonthly-a.keyword.estimatedSearchesMonthly);
+  for(const result of positive.length?positive:results.slice(0,1)){
+    const query=new URLSearchParams({q:result.direction,is_digital:'true',limit:'10',sort:'est_last_month',order:'desc',est_last_month_min:'0',fields:'title,url,shop,price,sales.est_last_month,sales.est_monthly_avg,sales.est_lifetime,sales.est_trend_3m'});
+    const products=await request(`/research/products?${query}`);
+    result.products=normalizeProducts(products);
+    result.productStatus='sampled';
+  }}catch{interrupted=true;}
+  return {plan,results,interrupted,source:'Alura API estimates',retrievedAt:new Date().toISOString()};
 }
 
 export default async function handler(req,res){

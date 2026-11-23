@@ -17,13 +17,13 @@ test('product markets come from unfamiliar listing evidence, not a category cata
 test('selection abstains when direction demand is broad or buyer position is not explicit',()=>{
   const assessment=assessDirection({phrase:'horror movie png bundle'}, {sample:listings}, {keyword:null,products:[{id:'1',title:listings[0].title,shop:{id:'a'},sales:{est_last_month:5}},{id:'2',title:listings[1].title,shop:{id:'b'},sales:{est_last_month:1}}]});
   assert.equal(assessment.recommended,false);
-  assert.equal(chooseProductTarget([assessment]).status,'abstain');
+  assert.equal(chooseProductTarget([assessment]).status,'preliminary');
 });
 test('selection requires independent recent activity and explicit buyer positioning',()=>{
   const direction={phrase:'horror movie poster'};
-  const assessment=assessDirection(direction,{sample:listings},{keyword:{estimatedSearchesMonthly:100},products:[
-    {id:'3',title:listings[2].title,shop:{id:'a'},sales:{est_last_month:2}},
-    {id:'4',title:listings[3].title,shop:{id:'b'},sales:{est_last_month:1}}
+  const assessment=assessDirection(direction,{sample:listings},{keyword:{keyword:direction.phrase,estimatedSearchesMonthly:100},products:[
+    {id:'3',title:listings[2].title,shop:{id:'a'},as_of:'2026-11-01',sales:{est_last_month:2}},
+    {id:'4',title:listings[3].title,shop:{id:'b'},as_of:'2026-11-08',sales:{est_last_month:1}}
   ]});
   assert.equal(assessment.recommended,true);
   assert.equal(chooseProductTarget([assessment]).winner.direction.phrase,'horror movie poster');
@@ -35,9 +35,9 @@ test('movie poster can surface horror poster and decorative purpose is not rejec
   ];
   const market=discoverProductMarkets('movie poster',posterRows).find(item=>item.phrase==='horror movie poster');
   assert.ok(market);
-  const assessed=assessDirection(market,{sample:posterRows},{keyword:{estimatedSearchesMonthly:20},products:[
-    {id:'a',title:posterRows[0].title,shop:{id:'one'},sales:{est_last_month:1}},
-    {id:'b',title:posterRows[1].title,shop:{id:'two'},sales:{est_last_month:1}}
+  const assessed=assessDirection(market,{sample:posterRows},{keyword:{keyword:market.phrase,estimatedSearchesMonthly:20},products:[
+    {id:'a',title:posterRows[0].title,shop:{id:'one'},as_of:'2026-11-01',sales:{est_last_month:1}},
+    {id:'b',title:posterRows[1].title,shop:{id:'two'},as_of:'2026-11-02',sales:{est_last_month:1}}
   ]});
   assert.equal(assessed.audience,'buyers seeking horror movie poster');
   assert.equal(assessed.recommended,true);

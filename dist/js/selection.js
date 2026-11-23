@@ -1,147 +1,143 @@
-// Product selection is deliberately evidence-first. It has no niche catalog:
-// directions come from returned listing text and every conclusion retains IDs.
-import {listingRelevance, normalizePhrase, wordTokens} from './discovery.js';
+import {listingRelevance, wordTokens} from './discovery.js';
+import {extractListingCharacteristics} from './product-evidence.js';
 
-const NOISE=new Set(['digital','download','instant','printable','editable','template','file','files','sale','new','for','with','and','the','a','an']);
-// These are writing fragments and generic merchandising labels, not product
-// categories. They prevent title prose from becoming a paid search query.
-const FRAGMENT=new Set(['these','this','each','ratio','resolution','please','your','you','our','perfect','unique','best','gift','present','idea','thing','stuff']);
-const canonical=value=>normalizePhrase(value);
-const tokens=value=>wordTokens(value).filter(word=>!NOISE.has(word));
-const overlap=(a,b)=>{
-  const left=new Set(tokens(a)),right=new Set(tokens(b));
-  return [...left].filter(token=>right.has(token)).length/Math.max(left.size,right.size,1);
-};
-const phraseFromListing=listing=>{
-  const head=String(listing.title||'').split(/[|,;–—:]/)[0];
-  const words=tokens(head).slice(0,7);
-  return words.length>=2?words.join(' '):'';
-};
-const sourceText=listing=>String(listing.title||'').split(/[|,;–—:]/)[0].trim().slice(0,180);
-const AUDIENCE_FRAGMENT=new Set(['these','this','each','ratio','resolution','who','like','printing','print','prints','download','file','files','quality','the','a','an']);
-const idsOverlap=(a,b)=>{
-  const left=new Set(a),right=new Set(b);
-  return [...left].filter(id=>right.has(id)).length/Math.max(Math.min(left.size,right.size),1);
-};
-const resemblesSeed=(seed,phrase)=>{
-  const left=new Set(tokens(seed)),right=new Set(tokens(phrase));
-  return [...left].filter(token=>right.has(token)).length/Math.max(Math.min(left.size,right.size),1)>=.5;
-};
-const cleanMarketPhrase=value=>{
-  const phrase=canonical(value),words=tokens(phrase);
-  if(words.length<2||words.length>6||words.some(word=>FRAGMENT.has(word)))return null;
-  return phrase;
-};
-const buyerText=listing=>{
-  // Descriptions frequently contain instructions or shipping prose. Only use
-  // the compact seller-authored title/tag surface for an audience claim.
-  const text=`${listing.title||''} ${(listing.tags||[]).join(' ')}`;
-  const match=text.match(/\bfor\s+([\p{L}\p{N}'-]+(?:\s+[\p{L}\p{N}'-]+){0,3})/iu);
-  const value=match?.[1]?.trim()||null;
-  if(!value||wordTokens(value).some(token=>AUDIENCE_FRAGMENT.has(token)))return null;
-  return value;
-};
-
-export function discoverProductMarkets(seed,listings){
-  const normalizedSeed=canonical(seed);
-  const rows=(Array.isArray(listings)?listings:[]).filter(row=>row?.listingType==='download');
-  const groups=new Map();
-  const add=(phrase,listing,isSeed=false)=>{
-    const clean=cleanMarketPhrase(phrase);
-    if(!clean||(!isSeed&&!resemblesSeed(normalizedSeed,clean)))return;
-    const group=groups.get(clean)||{phrase:clean,listingIds:new Set(),listings:[],audiences:new Map(),isSeed:false};
-    group.isSeed||=isSeed;
-    group.listingIds.add(String(listing.id));
-    if(!group.listings.some(row=>String(row.id)===String(listing.id)))group.listings.push(listing);
-    const audience=buyerText(listing);
-    if(audience)group.audiences.set(canonical(audience),audience);
-    groups.set(clean,group);
-  };
-  for(const listing of rows){
-    if(listingRelevance(seed,listing)==='irrelevant')continue;
-    add(normalizedSeed,listing,true);
-    for(const phrase of new Set([phraseFromListing(listing),...(listing.tags||[])]))add(phrase,listing);
-  }
-  const raw=[...groups.values()].filter(group=>group.listingIds.size>=2).map(group=>({
-    phrase:group.phrase,listingIds:[...group.listingIds],listings:group.listings,audiences:[...group.audiences.values()],isSeed:group.isSeed
-  }));
-  // Merge alternate seller wording only when the phrases materially overlap or
-  // are repeatedly attached to the same listings. Keep the clearest phrase.
-  const merged=[];
-  for(const candidate of raw.sort((a,b)=>b.listingIds.length-a.listingIds.length||a.phrase.localeCompare(b.phrase))){
-    const match=merged.find(group=>overlap(group.phrase,candidate.phrase)>=.5||idsOverlap(group.listingIds,candidate.listingIds)>=.7);
-    if(!match){merged.push({...candidate,aliases:[]});continue;}
-    match.aliases.push(candidate.phrase);
-    for(const id of candidate.listingIds)if(!match.listingIds.includes(id))match.listingIds.push(id);
-    for(const listing of candidate.listings)if(!match.listings.some(row=>String(row.id)===String(listing.id)))match.listings.push(listing);
-    for(const audience of candidate.audiences)if(!match.audiences.includes(audience))match.audiences.push(audience);
-    match.isSeed||=candidate.isSeed;
-  }
-  return merged.map(group=>({
-    ...group,
-    sourceListings:group.listings.slice(0,4).map(listing=>({id:String(listing.id),title:sourceText(listing),url:listing.url||null})),
-    reason:`${group.listingIds.length} relevant downloadable Etsy listings use this coherent product phrase.`
-  })).sort((a,b)=>Number(a.isSeed)-Number(b.isSeed)||b.listingIds.length-a.listingIds.length||a.phrase.localeCompare(b.phrase));
+const clean = text => String(text || '').trim().toLowerCase().replace(/\s+/g, ' ');
+const clauses = title => String(title || '').split(/\s*[,;|:–—()\n]\s*|\s+-\s+/).map(t => t.trim()).filter(Boolean);
+const delivery = /\b(?:instant download|digital download|instant|downloadable|digital|printable|download)\b/gi;
+const prose = /\b(?:gift|present|perfect|our|your|please|sale|each|best|these|this|unique)\b/i;
+const terms = text => wordTokens(text).filter(t => !['a','an','the','and','for','with','of'].includes(t));
+const key = text => [...new Set(terms(text))].sort().join(' ');
+const unique = rows => [...new Map(rows.filter(r => r?.id != null && r.id !== '').map(r => [String(r.id),r])).values()];
+function identity(title) {
+  let first = clauses(title)[0] || '';
+  const modifier=first.search(/\s+(?:printable|instant download|digital download)\b/i);
+  if(modifier>0 && terms(first.slice(0,modifier)).length>=2)first=first.slice(0,modifier);
+  return clean(first.split(/\s+(?:for|with|includes?|featuring)\s+/i)[0].replace(delivery,'').replace(/^[\s+\d]+\s+|[\s-]+$/g,''));
+}
+function usable(phrase) {
+  const words = terms(phrase);
+  return words.length >= 2 && words.length <= 8 && phrase.length <= 80 && !prose.test(phrase);
+}
+// Require the product noun at the end of the primary deliverable. A mention
+// in tags or a later clause alone cannot identify the item being sold.
+export function classifyComparable(phrase, listing) {
+  if (listing?.listingType !== 'download') return 'irrelevant';
+  const primary = terms(identity(listing.title));
+  const wanted = terms(phrase.replace(delivery,''));
+  if (!wanted.length || !primary.length) return 'uncertain';
+  const sameHead = primary.at(-1) === wanted.at(-1);
+  if (sameHead && wanted.every(t => primary.includes(t))) return 'direct';
+  const primaryText=primary.join(' '), wantedText=wanted.join(' ');
+  const tail=primaryText.slice(wantedText.length).trim();
+  // Some undelimited titles concatenate two complete seller tags. Only accept
+  // the boundary when both halves appear independently in this listing.
+  const tags=(listing.tags || []).map(tag=>terms(tag).join(' '));
+  if(primaryText.startsWith(wantedText+' ') && tags.includes(wantedText) && tags.includes(tail) && terms(tail).length>=2)return 'direct';
+  if (sameHead && listingRelevance(phrase, {title:listing.title}) === 'semantic') return 'direct';
+  if (wanted.some(t => primary.includes(t))) return 'adjacent';
+  return listingRelevance(phrase, listing) === 'irrelevant' ? 'irrelevant' : 'uncertain';
 }
 
-// This selects diverse research probes, not winners. A parent phrase cannot
-// crowd out all of the distinct product forms found in the evidence.
-export function selectResearchBatch(seed,markets,max=3){
-  const specific=markets.filter(market=>!market.isSeed);
-  const chosen=[];
-  for(const market of specific){
-    if(chosen.some(other=>overlap(other.phrase,market.phrase)>=.45||idsOverlap(other.listingIds,market.listingIds)>=.7))continue;
-    chosen.push(market);
-    if(chosen.length>=max)break;
+export function discoverProductMarkets(seed, listings, minimum = 2) {
+  const rows = unique(listings || []).filter(r => r.listingType === 'download' && listingRelevance(seed,r) !== 'irrelevant');
+  const phrases = new Set([clean(seed)]);
+  const endings=new Map();
+  for (const row of rows) {
+    const head = identity(row.title);
+    if(listingRelevance(seed,{title:row.title})!=='irrelevant' && !terms(head).some((t,i,all)=>all.indexOf(t)!==i)){
+      phrases.add(head);
+      const words=head.split(/\s+/);
+      for(let size=2;size<=Math.min(6,words.length);size++){
+        const ending=words.slice(-size).join(' ');
+        if(!terms(ending).some(t=>terms(seed).includes(t)))continue;
+        endings.set(ending,(endings.get(ending)||0)+1);
+      }
+    }
+    for (const tag of row.tags || []) {
+      if (listingRelevance(seed,{title:tag}) !== 'irrelevant' && classifyComparable(tag,row) === 'direct') phrases.add(clean(tag));
+    }
   }
-  if(!chosen.length){
-    const fallback=markets.find(market=>market.isSeed&&market.listingIds.length>=2);
-    if(fallback)chosen.push(fallback);
+  for(const [phrase,count] of endings)if(count>=2)phrases.add(phrase);
+  const markets = [];
+  for (const phrase of phrases) {
+    if (!usable(phrase) || /^(?:and|with|for|of|the)\b/.test(phrase)) continue;
+    const evidence = rows.filter(row => classifyComparable(phrase,row) === 'direct');
+    if (evidence.length < minimum) continue;
+    const listingIds = evidence.map(r => String(r.id)).sort();
+    markets.push({phrase, listingIds, listings:evidence, isSeed:key(phrase)===key(seed),
+      sourceListings:evidence.slice(0,4), reason:`${listingIds.length} downloadable listings describe this product in their titles.`});
   }
-  return chosen;
+  return markets.sort((a,b) => b.listings.length-a.listings.length || a.phrase.length-b.phrase.length || a.phrase.localeCompare(b.phrase));
 }
 
-export function classifyComparable(direction,listing){
-  if(listing?.listingType!=='download')return 'irrelevant';
-  const match=listingRelevance(direction,listing);
-  if(match==='exact')return 'direct';
-  return overlap(direction,`${listing.title||''} ${(listing.tags||[]).join(' ')}`)>=0.45?'adjacent':'irrelevant';
+export function selectResearchBatch(seed,markets,max=3) {
+  const selected = [];
+  const specific = markets.filter(m => !m.isSeed && !terms(m.phrase).every(t=>terms(seed).includes(t)));
+  for (const market of specific.length ? specific : markets) {
+    if (selected.some(other => key(other.phrase)===key(market.phrase) ||
+      market.listingIds.some(id=>other.listingIds.includes(id)) &&
+      market.listingIds.filter(id=>other.listingIds.includes(id)).length >= .5*Math.min(other.listingIds.length,market.listingIds.length))) continue;
+    selected.push(market);
+    if (selected.length >= max) break;
+  }
+  return selected;
 }
 
-export function assessDirection(direction,etsy,commercial){
-  const sample=Array.isArray(etsy?.sample)?etsy.sample:[];
-  const direct=sample.filter(row=>classifyComparable(direction.phrase,row)==='direct');
-  const adjacent=sample.filter(row=>classifyComparable(direction.phrase,row)==='adjacent');
-  const records=(commercial?.products||[]).map(row=>({...row,classification:classifyComparable(direction.phrase,{...row,listingType:'download'})}));
-  const comparable=records.filter(row=>row.classification==='direct');
-  const populated=comparable.filter(row=>Number.isInteger(row.sales?.est_last_month));
-  const active=populated.filter(row=>row.sales.est_last_month>0);
-  const independent=new Set(active.map(row=>String(row.shop?.id||row.shop?.name||row.id))).size;
-  const demand=commercial?.keyword?.estimatedSearchesMonthly??null;
-  const audiences=[...new Set(direct.flatMap(buyerText).filter(Boolean))];
-  const position=direct.map(phraseFromListing).filter(Boolean);
-  // Decorative products often express a buying purpose through the product
-  // itself rather than a functional “for X” claim. That is not a missing
-  // audience; it is a narrower, observed purchase purpose.
-  const purchasePurpose=audiences[0]||(direct.length>=2?`buyers seeking ${direction.phrase}`:null);
-  const hasCommercialEvidence=independent>=2;
-  const hasPositionEvidence=Boolean(purchasePurpose)&&position.length>=2;
-  const recommended=demand!==null&&demand>0&&hasCommercialEvidence&&hasPositionEvidence;
-  const reasons=[];
-  if(demand===null)reasons.push('No exact Alura demand estimate for this direction.');
-  if(independent<2)reasons.push('Fewer than two independent sellers have a positive recent-sales estimate in the comparable sample.');
-  if(!hasPositionEvidence)reasons.push('The sampled listings do not explicitly establish both a buyer group and a specific position.');
-  return {direction,etsy:{direct,adjacent},commercial:{records,comparable,populated,active,independent},demand,
-    audience:purchasePurpose,explicitAudience:audiences[0]||null,observedPosition:position.slice(0,4),recommended,reasons,
-    conclusion:recommended?'Supported for controlled validation; estimates are comparative evidence, not a sales forecast.':'No supported target from this direction yet.'};
+export function distribution(values) {
+  const sorted = values.filter(Number.isFinite).sort((a,b)=>a-b);
+  function quantile(p) {
+    if (!sorted.length) return null;
+    const i = (sorted.length-1)*p, lower = Math.floor(i);
+    return sorted[lower]+(i-lower)*(sorted[Math.ceil(i)]-sorted[lower]);
+  }
+  return {values:sorted, median:quantile(.5), q1:quantile(.25), q3:quantile(.75)};
 }
 
-export function chooseProductTarget(assessments){
-  const supported=assessments.filter(item=>item.recommended);
-  if(!supported.length)return {status:'abstain',winner:null,alternatives:assessments};
-  // Deterministic evidence ordering only; this is a tie-breaker after all
-  // required evidence is present, not an opportunity score.
-  supported.sort((a,b)=>b.commercial.independent-a.commercial.independent||
-    b.commercial.active.length-a.commercial.active.length||a.direction.phrase.localeCompare(b.direction.phrase));
-  return {status:'supported',winner:supported[0],alternatives:assessments.filter(item=>item!==supported[0])};
+export function assessDirection(direction,etsy,commercial) {
+  const sample = unique([...(direction.listings || []), ...(etsy?.sample || [])]);
+  const direct = sample.filter(row=>classifyComparable(direction.phrase,row)==='direct');
+  const adjacent = sample.filter(row=>classifyComparable(direction.phrase,row)==='adjacent');
+  const byId = new Map(sample.map(row=>[String(row.id),row]));
+  const records = unique(commercial?.products || []).map(row=>{
+    const match = byId.get(String(row.id));
+    const conflict=match?.shopId && row.shop?.id && String(match.shopId)!==String(row.shop.id);
+    const classification = conflict?'uncertain':classifyComparable(direction.phrase,match || {...row,listingType:'download'});
+    return {...row, classification, matched:Boolean(match), etsy:match};
+  });
+  const comparable = records.filter(r=>r.classification==='direct');
+  const populated = comparable.filter(r=>Number.isSafeInteger(r.sales?.est_last_month) && r.sales.est_last_month>=0);
+  const active = populated.filter(r=>r.sales.est_last_month>0);
+  const namedIds=new Map();
+  for(const r of comparable){
+    const id=r.etsy?.shopId || r.shop?.id;
+    if(id && r.shop?.name)namedIds.set(clean(r.shop.name),String(id));
+  }
+  const shop = r=>r.etsy?.shopId || r.shop?.id || (r.shop?.name && (namedIds.get(clean(r.shop.name)) || clean(r.shop.name)));
+  const shops = rows=>new Set(rows.map(shop).filter(Boolean).map(String)).size;
+  const independent = shops(active);
+  const sales = distribution(populated.map(r=>r.sales.est_last_month));
+  const shopTotals=new Map();
+  for(const r of active)if(shop(r))shopTotals.set(String(shop(r)),(shopTotals.get(String(shop(r)))||0)+r.sales.est_last_month);
+  const topShop=Math.max(0,...shopTotals.values()), sampleTotal=sales.values.reduce((sum,x)=>sum+x,0);
+  const prices = Object.fromEntries([...new Set(direct.filter(r=>Number.isFinite(r.price)&&r.currency).map(r=>r.currency))].map(c=>[c,distribution(direct.filter(r=>r.currency===c).map(r=>r.price))]));
+  const exact = commercial?.keyword && clean(commercial.keyword.keyword)===clean(direction.phrase) ? commercial.keyword : null;
+  const demand = exact?.estimatedSearchesMonthly ?? null;
+  const periods = new Set(populated.map(r=>/^\d{4}-\d{2}/.exec(r.as_of)?.[0] || null));
+  const comparablePeriod = periods.size===1 && !periods.has(null);
+  const referenceMonth=etsy?.fetchedAt?.slice(0,7);
+  const timely=!referenceMonth || [...periods][0]===referenceMonth;
+  const recommended = demand>0 && comparablePeriod && timely && independent>=2 && direct.length>=2;
+  const exemplar = [...direct].sort((a,b)=>Number(identity(a.title)===clean(direction.phrase))-Number(identity(b.title)===clean(direction.phrase)) || a.title.length-b.title.length)[0];
+  return {direction, etsy:{direct,adjacent,date:etsy?.fetchedAt}, commercial:{records,comparable,populated,active,independent,shops:shops(populated)}, prices,sales,exact,demand,recommended,comparablePeriod,exemplar,
+    topShop,sampleTotal,timely,characteristics:extractListingCharacteristics(exemplar),audience:`buyers seeking ${direction.phrase}`};
+}
+
+export function chooseProductTarget(assessments) {
+  const ordered = assessments.filter(a=>a.exemplar).sort((a,b)=>Number(b.recommended)-Number(a.recommended) ||
+    b.commercial.independent-a.commercial.independent || b.etsy.direct.length-a.etsy.direct.length || a.direction.phrase.localeCompare(b.direction.phrase));
+  const winner=ordered[0];
+  const supported=ordered.filter(a=>a.recommended);
+  const sameMonth = supported.every(a=>a.commercial.populated[0]?.as_of?.slice(0,7)===winner?.commercial.populated[0]?.as_of?.slice(0,7));
+  const decisive=winner?.recommended && (supported.length===1 || sameMonth && winner.commercial.independent>supported[1].commercial.independent);
+  return {status:decisive?'supported':ordered.length>1?'multiple':winner?'preliminary':'blocked',winner,alternatives:ordered.slice(1)};
 }
