@@ -30,7 +30,8 @@ test('independent corroboration separates a proposed configuration from one sell
   assert.deepEqual(markets.map(m=>m.phrase),['animal coloring book']);
   const items=markets.map(m=>assessDirection(m,{sample:rows}));
   const aboveFold=renderDecision(chooseProductTarget(items),items).split('<h2>Market comparison')[0];
-  assert.match(aboveFold,/PDF appears in 2 direct listings across 2 shops/);
+  assert.match(aboveFold,/Supply it in PDF format/);
+  assert.match(aboveFold,/2 direct Etsy listings across 2 identified shops/);
   assert.doesNotMatch(aboveFold,/Christmas|for kids|reference specification/i);
 });
 test('product markets come from unfamiliar listing evidence, not a category catalog',()=>{
@@ -45,7 +46,8 @@ test('selection abstains when direction demand is broad or buyer position is not
 });
 test('selection requires independent recent activity and explicit buyer positioning',()=>{
   const direction={phrase:'horror movie poster'};
-  const assessment=assessDirection(direction,{sample:listings},{keyword:{keyword:direction.phrase,estimatedSearchesMonthly:100},products:[
+  const identified=listings.map(r=>({...r,shopId:r.id==='3'?'a':r.id==='4'?'b':r.id}));
+  const assessment=assessDirection(direction,{sample:identified},{keyword:{keyword:direction.phrase,estimatedSearchesMonthly:100,asOf:'2026-11-01'},products:[
     {id:'3',title:listings[2].title,shop:{id:'a'},as_of:'2026-11-01',sales:{est_last_month:2}},
     {id:'4',title:listings[3].title,shop:{id:'b'},as_of:'2026-11-08',sales:{est_last_month:1}}
   ]});
@@ -64,7 +66,7 @@ test('movie poster can surface horror poster and decorative purpose is not rejec
     {id:'b',title:posterRows[1].title,shop:{id:'two'},as_of:'2026-11-02',sales:{est_last_month:1}}
   ]});
   assert.equal(assessed.audience,'buyers seeking horror movie poster');
-  assert.equal(assessed.recommended,true);
+  assert.equal(assessed.recommended,false); // Supply and two sales alone do not establish a positioning test.
 });
 test('planner consolidates overlapping wall-art wording and rejects generic gift labels from paid research',()=>{
   const horrorRows=[

@@ -73,7 +73,7 @@ async function begin(value){
         }catch{sources.push(`${query} unavailable`);}
       }
     }
-    const paid=markets.filter(m=>new Set(m.listings.map(row=>row.shopId).filter(Boolean)).size>=2);
+    const paid=markets.filter(m=>!m.componentOnly && new Set(m.listings.map(row=>row.shopId).filter(Boolean)).size>=2);
     if(paid.length)markets=paid;
     else{
       const leads=markets.length?markets:selectResearchBatch(seed,discoverProductMarkets(seed,rows,1,shopScope));

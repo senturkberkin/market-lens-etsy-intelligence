@@ -6,7 +6,7 @@ import {join,extname,resolve} from 'node:path';
 
 const root=resolve('dist');
 const sample=Array.from({length:40},(_,i)=>({
-  id:i+1,title:i%2?'Weekly meal planner printable for families':'Wedding budget planner spreadsheet',
+  id:i+1,title:i%2?'Weekly meal planner printable for families':'Wedding budget planner spreadsheet | editable XLSX for couples',
   tags:i%2?['family meal planner','weekly meal planner printable']:['wedding budget planner','wedding spreadsheet planner'],
   listingType:'download',price:10+i/10,currency:'USD',shopId:String(i+1)
 }));

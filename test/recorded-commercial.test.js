@@ -18,8 +18,8 @@ test('recorded Alura search · compare the observed product formats',async t=>{
   const ticket=assess('vintage movie ticket poster'), bundle=assess('horror movie png bundle');
   assert.deepEqual(ticket.commercial.populated.map(r=>r.id),['4311809927','4504888836']);
   assert.deepEqual(ticket.sales.values,[1,1]);assert.equal(ticket.commercial.independent,1);
-  assert.deepEqual(bundle.commercial.populated.map(r=>r.id),['4456990427']);
-  assert.deepEqual(bundle.sales.values,[5]);assert.equal(bundle.commercial.independent,1);
+  assert.deepEqual(bundle.commercial.populated.map(r=>r.id),['4456990427','4579654223']);
+  assert.deepEqual(bundle.sales.values,[1,5]);assert.equal(bundle.commercial.independent,2);
   for(const item of [ticket,bundle]){
     assert.equal(item.demand,null);assert.equal(item.recommended,false);
     assert.equal(item.commercial.records.some(r=>r.matched),false);
@@ -28,6 +28,6 @@ test('recorded Alura search · compare the observed product formats',async t=>{
   assert.equal(decision.status,'multiple');
   const rendered=renderDecision(decision,[ticket,bundle]);
   assert.match(rendered,/Commercial preference remains unresolved/);
-  assert.match(rendered,/Largest identified shop accounts for 5 of 5/);
+  assert.match(rendered,/Largest identified shop accounts for 5 of 6/);
   assert.doesNotMatch(rendered,/Product to prototype/);
 });

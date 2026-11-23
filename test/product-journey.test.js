@@ -45,8 +45,8 @@ test('holdout · enter a seed, inspect rendered priorities, approve simulated re
   globalThis.location={origin:'https://fixture.invalid',search:''};globalThis.history={replaceState(){}};
   const savedFetch=globalThis.fetch;
   const cases=[
-    ['cyanotype',[row(1,'Cyanotype exposure register | editable PDF'),row(2,'Studio cyanotype exposure register'),row(3,'Cyanotype botanical silhouettes | SVG'),row(4,'Layered cyanotype botanical silhouettes')],'Multiple plausible directions','exposure register'],
-    ['organ voicing',[row(5,'Organ voicing worksheet | editable XLSX'),row(6,'Pipe organ voicing worksheet')],'Preliminary product direction','worksheet'],
+    ['cyanotype',[row(1,'Cyanotype exposure register | editable PDF'),row(2,'Studio cyanotype exposure register | editable PDF'),row(3,'Cyanotype botanical silhouettes | layered SVG'),row(4,'Layered cyanotype botanical silhouettes')],'Multiple plausible directions','exposure register'],
+    ['organ voicing',[row(5,'Organ voicing worksheet | editable XLSX'),row(6,'Pipe organ voicing worksheet | editable XLSX')],'Preliminary product direction','worksheet'],
     ['tidal harmonics',[row(7,'Tidal harmonics reference wheel | layered PDF')],'Preliminary product direction','reference wheel'],
     ['kelp pressing',[],'Blocked research','retrieved listings']
   ];
@@ -66,7 +66,7 @@ test('holdout · enter a seed, inspect rendered priorities, approve simulated re
             }))})};
           }
           const direction=request.directions[0];
-          return {ok:true,json:async()=>({results:[{direction,keyword:{keyword:direction,estimatedSearchesMonthly:37},products:sample.map((r,i)=>({...r,shop:{id:r.shopId},as_of:iso,sales:{est_last_month:2+i}}))}]})};
+          return {ok:true,json:async()=>({results:[{direction,keyword:{keyword:direction,estimatedSearchesMonthly:37,asOf:iso},products:sample.map((r,i)=>({...r,shop:{id:r.shopId},as_of:iso,sales:{est_last_month:2+i}}))}]})};
         }
         reads++;return {ok:true,json:async()=>({keyword:url.searchParams.get('keyword'),sample,fetchedAt:iso})};
       };

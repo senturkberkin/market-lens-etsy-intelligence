@@ -1,22 +1,12 @@
 import {listingRelevance, wordTokens} from './discovery.js';
-import {extractListingCharacteristics} from './product-evidence.js';
+import {listingIdentity,identityScopes,scopeMatches,productName as identity,titleParts as clauses,deliveryWords as delivery} from './product-identity.js';
 
 const clean = text => String(text || '').trim().toLowerCase().replace(/\s+/g, ' ');
-const clauses = title => String(title || '').split(/\s*[,;|:–—()\n]\s*|\s+-\s+/).map(t => t.trim()).filter(Boolean);
-const delivery = /\b(?:instant download|digital download|instant|downloadable|digital|printable|download)\b/gi;
 const prose = /\b(?:gift|present|perfect|our|your|please|sale|each|best|these|this|unique)\b/i;
 const terms = text => wordTokens(text).filter(t => !['a','an','the','and','for','with','of'].includes(t));
 const key = text => [...new Set(terms(text))].sort().join(' ');
 const packaging=new Set(['pdf','png','jpg','jpeg','svg','file','bundle','set','download','digital']);
-const encoding=/\b(?:pdf|svg|png|jpeg|jpg|xlsx|stl|dxf|epub|psd|wif|google sheets|excel|canva|procreate|notion)\b/gi;
-const formatOf=row=>[...new Set((row.title+' '+(row.tags||[]).join(' ')).match(encoding)?.map(t=>t.toUpperCase().replace(/^JPEG$/,'JPG'))||[])];
 const unique = rows => [...new Map(rows.filter(r => r?.id != null && r.id !== '').map(r => [String(r.id),r])).values()];
-function identity(title) {
-  let first = clauses(title)[0] || '';
-  const modifier=first.search(/\s+(?:printable|instant download|digital download)\b/i);
-  if(modifier>0 && terms(first.slice(0,modifier)).length>=2)first=first.slice(0,modifier);
-  return clean(first.split(/\s+(?:for|with|includes?|featuring)\s+/i)[0].replace(delivery,'').replace(/^[\s+\d]+\s+|[\s-]+$/g,''));
-}
 function usable(phrase) {
   const words = terms(phrase);
   return words.length >= 2 && words.length <= 8 && phrase.length <= 80 && !prose.test(phrase) &&
@@ -29,11 +19,17 @@ function usable(phrase) {
 // in tags or a later clause alone cannot identify the item being sold.
 export function classifyComparable(phrase, listing) {
   if (listing?.listingType !== 'download') return 'irrelevant';
-  const primary = terms(identity(listing.title));
+  if(typeof phrase==='object')return scopeMatches(phrase,listing,classifyComparable);
+  const primary = terms(listingIdentity(listing).core.value);
   const wanted = terms(phrase.replace(delivery,''));
   if (!wanted.length || !primary.length) return 'uncertain';
   const sameHead = primary.at(-1) === wanted.at(-1);
   if (sameHead && wanted.every(t => primary.includes(t))) return 'direct';
+  // A title can specify the subject in another clause. Keep the primary
+  // deliverable and its requested encoding together (a themed bundle can
+  // contain poster artwork without itself being a poster).
+  if(sameHead && wanted.some(t=>packaging.has(t) && t!==wanted.at(-1) && primary.includes(t)) &&
+    listingRelevance(phrase,{title:listing.title})==='exact')return 'direct';
   const primaryText=primary.join(' '), wantedText=wanted.join(' ');
   const tail=primaryText.slice(wantedText.length).trim();
   // Some undelimited titles concatenate two complete seller tags. Only accept
@@ -48,14 +44,42 @@ export function classifyComparable(phrase, listing) {
 export function discoverProductMarkets(seed, listings, minimum = 2, shopScope = false) {
   const rows = unique(listings || []).filter(r => r.listingType === 'download' && (shopScope || listingRelevance(seed,r) !== 'irrelevant'));
   const phrases = new Set([clean(seed)]);
+  const suffixes=new Map();
   for (const row of rows) {
     const head = identity(row.title);
     if((shopScope || listingRelevance(seed,{title:row.title})!=='irrelevant') && !terms(head).some((t,i,all)=>all.indexOf(t)!==i)){
       phrases.add(head);
+      const words=head.split(' ');
+      for(let start=1;start<words.length-1;start++){
+        const suffix=words.slice(start).join(' ');
+        if(!usable(suffix) || listingRelevance(seed,{title:suffix})==='irrelevant')continue;
+        if(!suffixes.has(suffix))suffixes.set(suffix,new Set());
+        suffixes.get(suffix).add(head);
+      }
     }
     for (const tag of row.tags || []) {
       if (listingRelevance(seed,{title:tag}) !== 'irrelevant' && classifyComparable(tag,row) === 'direct') phrases.add(clean(tag));
     }
+  }
+  for(const [phrase,heads] of suffixes)if(heads.size>=2)phrases.add(phrase);
+  // Subjects often occur between a seed and the product noun. A repeated
+  // primary deliverable permits a single theme-level query in that case.
+  const families=new Map();
+  for(const row of rows){
+    const name=listingIdentity(row).core.value, head=name.split(' ').at(-1);
+    if(!head || packaging.has(head) || listingRelevance(seed,{title:name})!=='exact' ||
+      terms(seed).includes(terms(head)[0]))continue;
+    const family=clean(seed)+' '+head;
+    if(!families.has(family))families.set(family,new Set());
+    families.get(family).add(name);
+  }
+  for(const names of families.values()){
+    if(names.size<2)continue;
+    const wordLists=[...names].map(name=>name.split(' '));
+    const common=wordLists[0].filter(w=>wordLists.every(words=>words.includes(w))).join(' ');
+    if(usable(common) && new Set(terms(common)).size===terms(common).length &&
+      !rows.some(r=>(r.tags||[]).some(t=>clean(t)===clean(seed)) && classifyComparable(seed,r)==='direct'))
+      phrases.add(common);
   }
   const markets = [];
   for (const phrase of phrases) {
@@ -70,11 +94,31 @@ export function discoverProductMarkets(seed, listings, minimum = 2, shopScope = 
         !subject.slice(0,-1).some(t=>candidate.includes(t))))continue;
       if(!named.length || (minimum>1 && new Set(named.map(r=>r.shopId).filter(Boolean)).size<2))continue;
     }
-    const evidence = rows.filter(row => classifyComparable(phrase,row) === 'direct');
+    let evidence = rows.filter(row => classifyComparable(phrase,row) === 'direct');
     if (evidence.length < minimum) continue;
-    const listingIds = evidence.map(r => String(r.id)).sort();
-    markets.push({phrase, listingIds, listings:evidence, design:sharedDesign(phrase,evidence), isSeed:key(phrase)===key(seed),
-      sourceListings:evidence.slice(0,4), reason:`${listingIds.length} downloadable listings describe this product in their titles.`});
+    // A second complete product name repeatedly given by independent
+    // sellers is evidence of alternate wording. Tags alone cannot do this.
+    const aliases=new Map();
+    for(const row of evidence){
+      if(!row.shopId)continue;
+      for(const part of clauses(row.title).slice(1)){
+        const alias=identity(part);
+        if(!usable(alias) || alias===phrase || listingRelevance(seed,{title:alias})==='irrelevant' ||
+          /\b(?:included?|includes|with|bundle of|featuring)\b/i.test(part) ||
+          !(row.tags||[]).some(tag=>key(tag)===key(alias)))continue;
+        if(!aliases.has(alias))aliases.set(alias,new Set());
+        aliases.get(alias).add(row.shopId);
+      }
+    }
+    const names=[phrase,...[...aliases].filter(([,shops])=>shops.size>=2).map(([name])=>name)];
+    if(names.length>1)evidence=rows.filter(r=>names.some(n=>classifyComparable(n,r)==='direct'));
+    for(const scope of identityScopes(phrase,evidence)){
+      scope.identity.names=names;
+      if(scope.phrase.length>80)continue;
+      markets.push({phrase:scope.phrase,identity:scope.identity,listingIds:scope.identity.listingIds,
+        listings:scope.members,design:sharedDesign(phrase,scope.members),isSeed:key(scope.phrase)===key(seed),
+        sourceListings:scope.members.slice(0,4)});
+    }
   }
   if(!shopScope && usable(clean(seed)) && !markets.some(m=>listingRelevance(seed,{title:m.phrase})!=='irrelevant')){
     const mentions=rows.filter(r=>clauses(r.title).slice(1).some(part=>listingRelevance(seed,{title:part})==='exact') ||
@@ -98,10 +142,10 @@ function sharedDesign(phrase,rows){
     entry.shops.add(String(row.shopId));entry.ids.add(String(row.id));map.set(k,entry);
   }
   for(const row of rows){
-    formatOf(row).forEach(f=>witness(formats,f,row));
-    const observed=extractListingCharacteristics(row);
-    for(const claim of observed?.audiences||[])witness(details,'for '+claim.value,row);
-    for(const claim of observed?.functions||[])if(usable(claim.value))witness(details,'to '+claim.value,row);
+    const observed=listingIdentity(row);
+    observed.formats.forEach(f=>witness(formats,f.value.toUpperCase().replace(/^JPEG$/,'JPG'),row));
+    for(const claim of observed.segments)witness(details,'for '+claim.value,row);
+    for(const claim of observed.purposes)if(usable(claim.value))witness(details,'to '+claim.value,row);
     const text=row.title+' '+(row.tags||[]).join(' ');
     for(const tag of row.tags||[]){
       const words=terms(tag);
@@ -129,8 +173,45 @@ function sharedDesign(phrase,rows){
   return {format,detail,variant};
 }
 
+function entryEvidence(scope,rows) {
+  const claims=new Map();
+  for(const row of rows){
+    const product=listingIdentity(row);
+    for(const [kind,observations] of Object.entries({use:product.purposes,audience:product.segments,
+      feature:product.features.filter(f=>f.field!=='tag'),configuration:product.functionality})){
+      for(const obs of observations){
+        const value=clean(obs.value);
+        if(!value || value.length>70 || prose.test(value) || !row.shopId)continue;
+        const k=kind+' '+key(value);
+        if(!claims.has(k))claims.set(k,{kind,value,shops:new Set(),witnesses:new Map()});
+        const item=claims.get(k);
+        item.shops.add(String(row.shopId));item.witnesses.set(String(row.id),obs);
+      }
+    }
+  }
+  const repeated=[...claims.values()].filter(c=>c.shops.size>=2);
+  // A feature that some sellers explicitly advertise gives a falsifiable
+  // positioning test. Silence in other listings says nothing about inclusion.
+  const contrast=c=>c.witnesses.size<rows.length;
+  const priority={feature:0,use:1,audience:2,configuration:3};
+  repeated.sort((a,b)=>Number(contrast(b))-Number(contrast(a)) ||
+    priority[a.kind]-priority[b.kind] || b.shops.size-a.shops.size || a.value.localeCompare(b.value));
+  return {edge:repeated[0]||null,purpose:scope.purpose || repeated.find(c=>c.kind==='use')?.value,
+    segment:repeated.find(c=>c.kind==='audience')?.value};
+}
+
 export function selectResearchBatch(seed,markets,max=3) {
   const selected = [];
+  // Several different modifiers on one observed parent deliverable do not
+  // justify separate commercial lookups. Keep one scope and its witnesses.
+  const contains=(child,parent)=>terms(child.phrase).at(-1)===terms(parent.phrase).at(-1) &&
+    terms(parent.phrase).every(t=>terms(child.phrase).includes(t));
+  const parents=markets.filter(parent=>parent.identity && !parent.identity.purpose &&
+    markets.filter(m=>m!==parent && m.identity && !m.identity.purpose &&
+      contains(m,parent) && m.listingIds.every(id=>parent.listingIds.includes(id)))
+      .some((m,i,variants)=>variants.slice(i+1).some(n=>!n.listingIds.some(id=>m.listingIds.includes(id)))));
+  markets=markets.filter(m=>!parents.some(p=>p!==m && !m.identity?.purpose && contains(m,p) &&
+    m.listingIds.every(id=>p.listingIds.includes(id))));
   const theme=terms(seed.replace(delivery,''));
   // Distinguish a theme used to modify several actual deliverables from
   // an established product name. A scene or title ending with that theme
@@ -154,13 +235,16 @@ export function selectResearchBatch(seed,markets,max=3) {
   const broadSellerBase=seedMarket && new Set(seedMarket.listings.map(r=>r.shopId).filter(Boolean)).size>1;
   const specific = viable.filter(m => !m.isSeed && !terms(m.phrase).every(t=>terms(seed).includes(t)) &&
     (!broadSellerBase || new Set(m.listings.map(r=>r.shopId).filter(Boolean)).size>1));
-  const candidates=seedMarket?.componentOnly?[seedMarket]:specific.length?specific:seedMarket?[seedMarket]:viable;
+  const candidates=seedMarket?.componentOnly?[seedMarket]:specific.length?[...specific,...parents.filter(p=>p.isSeed)]:seedMarket?[seedMarket]:viable;
   const independent=candidates.filter(m=>new Set(m.listings.map(r=>r.shopId).filter(Boolean)).size>=2);
   function describesBoth(a,b){
-    const rows=a.listings.filter(r=>listingRelevance(b.phrase,r)!=='irrelevant');
-    return rows.length>=a.listings.length/2 && new Set(rows.map(r=>r.shopId).filter(Boolean)).size>=2;
+    return a.identity?.purpose===b.identity?.purpose && a.identity?.names.includes(b.identity?.core);
   }
-  for (const market of independent.length?independent:candidates) {
+  const priorities=(independent.length?independent:candidates).map(m=>({market:m,entry:entryEvidence(m.identity||{},m.listings)}))
+    .sort((a,b)=>Number(Boolean(b.entry.edge))-Number(Boolean(a.entry.edge)) ||
+      Number(Boolean(b.entry.purpose))-Number(Boolean(a.entry.purpose)) ||
+      (b.market.identity?.names.length||0)-(a.market.identity?.names.length||0));
+  for (const {market} of priorities) {
     if (selected.some(other => key(other.phrase)===key(market.phrase) ||
       describesBoth(market,other) || describesBoth(other,market) ||
       market.listingIds.some(id=>other.listingIds.includes(id)) &&
@@ -184,13 +268,14 @@ export function distribution(values) {
 export function assessDirection(direction,etsy,commercial) {
   const sample = unique([...(direction.listings || []), ...(etsy?.sample || [])]);
   const scoped = direction.listingIds ? sample.filter(row=>direction.listingIds.includes(String(row.id))) : sample;
-  const direct = scoped.filter(row=>classifyComparable(direction.phrase,row)==='direct');
-  const adjacent = sample.filter(row=>classifyComparable(direction.phrase,row)==='adjacent');
+  const scope=direction.identity || {core:direction.phrase,names:[direction.phrase],purpose:null};
+  const direct = scoped.filter(row=>classifyComparable(scope,row)==='direct');
+  const adjacent = sample.filter(row=>classifyComparable(scope,row)==='adjacent');
   const byId = new Map(sample.map(row=>[String(row.id),row]));
   const records = unique(commercial?.products || []).map(row=>{
     const match = byId.get(String(row.id));
     const conflict=match?.shopId && row.shop?.id && String(match.shopId)!==String(row.shop.id);
-    const classification = conflict?'uncertain':classifyComparable(direction.phrase,match || {...row,listingType:'download'});
+    const classification = conflict?'uncertain':classifyComparable(scope,match || {...row,listingType:'download'});
     return {...row, classification, matched:Boolean(match), etsy:match};
   });
   const comparable = records.filter(r=>r.classification==='direct');
@@ -214,20 +299,26 @@ export function assessDirection(direction,etsy,commercial) {
   const periods = new Set(populated.map(r=>Number.isFinite(Date.parse(r.as_of))?r.as_of.slice(0,7):null));
   const comparablePeriod = periods.size===1 && !periods.has(null);
   const referenceMonth=etsy?.fetchedAt?.slice(0,7);
-  const timely=!referenceMonth || [...periods][0]===referenceMonth;
+  const timely=!referenceMonth || [...periods][0]===referenceMonth &&
+    populated.every(row=>Date.parse(row.as_of)<=Date.parse(etsy.fetchedAt)+86400000);
   const referenceTime=Date.parse(etsy?.fetchedAt);
   const demandAge=(referenceTime-Date.parse(exact?.asOf))/86400000;
   const outdatedDemand=Number.isFinite(demandAge) && (demandAge>93 || demandAge< -1);
-  const recommended = demand>0 && !outdatedDemand && comparablePeriod && timely && independent>=2 && direct.length>=2;
+  const entry=entryEvidence(scope,direct);
+  const complete=populated.length===comparable.length && active.every(r=>shop(r));
+  const recommended = demand>0 && Number.isFinite(Date.parse(exact?.asOf)) && !outdatedDemand &&
+    comparablePeriod && timely && complete && independent>=2 && direct.length>=2 && Boolean(entry.edge);
   const exemplar = [...direct].sort((a,b)=>Number(!usable(identity(a.title)))-Number(!usable(identity(b.title))) ||
     Number(identity(a.title)===clean(direction.phrase))-Number(identity(b.title)===clean(direction.phrase)) || a.title.length-b.title.length)[0];
-  return {direction, etsy:{direct,adjacent,date:etsy?.fetchedAt,shops:new Set(direct.map(r=>r.shopId).filter(Boolean)).size}, commercial:{records,comparable,populated,active,independent,shops:shops(populated),sampled:commercial?.productStatus==='sampled'||records.length>0}, prices,sales,exact,demand,recommended,comparablePeriod,exemplar,
+  return {direction,scope,entry, etsy:{direct,adjacent,date:etsy?.fetchedAt,shops:new Set(direct.map(r=>r.shopId).filter(Boolean)).size}, commercial:{records,comparable,populated,active,independent,shops:shops(populated),sampled:commercial?.productStatus==='sampled'||records.length>0}, prices,sales,exact,demand,recommended,comparablePeriod,exemplar,
     topShop,sampleTotal,timely,outdatedDemand,design:sharedDesign(direction.phrase,direct),audience:`buyers seeking ${direction.phrase}`};
 }
 
 export function chooseProductTarget(assessments) {
   // With equivalent design evidence, the input order is the query order only.
-  const designOrder=(a,b)=>Number(Boolean(b.design.format))-Number(Boolean(a.design.format)) ||
+  const designOrder=(a,b)=>Number(Boolean(b.entry.edge))-Number(Boolean(a.entry.edge)) ||
+    Number(Boolean(b.entry.purpose))-Number(Boolean(a.entry.purpose)) ||
+    Number(Boolean(b.design.format))-Number(Boolean(a.design.format)) ||
     Number(Boolean(b.design.detail))-Number(Boolean(a.design.detail));
   const freshShops=a=>a.comparablePeriod && a.timely ? a.commercial.independent : 0;
   const ordered = assessments.filter(a=>a.exemplar || a.direction.componentOnly || a.commercial.comparable.length).sort((a,b)=>Number(b.recommended)-Number(a.recommended) ||
