@@ -7,6 +7,7 @@ const delivery = /\b(?:instant download|digital download|instant|downloadable|di
 const prose = /\b(?:gift|present|perfect|our|your|please|sale|each|best|these|this|unique)\b/i;
 const terms = text => wordTokens(text).filter(t => !['a','an','the','and','for','with','of'].includes(t));
 const key = text => [...new Set(terms(text))].sort().join(' ');
+const packaging=new Set(['pdf','png','jpg','jpeg','svg','file','bundle','set','download','digital']);
 const unique = rows => [...new Map(rows.filter(r => r?.id != null && r.id !== '').map(r => [String(r.id),r])).values()];
 function identity(title) {
   let first = clauses(title)[0] || '';
@@ -82,8 +83,21 @@ export function discoverProductMarkets(seed, listings, minimum = 2, shopScope = 
 
 export function selectResearchBatch(seed,markets,max=3) {
   const selected = [];
-  const specific = markets.filter(m => !m.isSeed && !terms(m.phrase).every(t=>terms(seed).includes(t)));
-  for (const market of specific.length ? specific : markets) {
+  const theme=terms(seed.replace(delivery,''));
+  const viable=markets.filter(m=>{
+    const words=terms(m.phrase);
+    // Adding a container/encoding alone leaves the proposed product undefined.
+    const extra=words.filter(t=>!theme.includes(t));
+    if(extra.length && extra.every(t=>packaging.has(t)))return false;
+    if(theme.length===1 && words.at(-1)===theme[0] &&
+      !m.listings.some(r=>usable(identity(r.title)) && key(identity(r.title))===key(m.phrase)))return false;
+    return true;
+  });
+  const seedMarket=viable.find(m=>m.isSeed);
+  const broadSellerBase=seedMarket && new Set(seedMarket.listings.map(r=>r.shopId).filter(Boolean)).size>1;
+  const specific = viable.filter(m => !m.isSeed && !terms(m.phrase).every(t=>terms(seed).includes(t)) &&
+    (!broadSellerBase || new Set(m.listings.map(r=>r.shopId).filter(Boolean)).size>1));
+  for (const market of specific.length ? specific : seedMarket?[seedMarket]:viable) {
     if (selected.some(other => key(other.phrase)===key(market.phrase) ||
       market.listingIds.some(id=>other.listingIds.includes(id)) &&
       market.listingIds.filter(id=>other.listingIds.includes(id)).length >= .5*Math.min(other.listingIds.length,market.listingIds.length))) continue;
@@ -138,7 +152,8 @@ export function assessDirection(direction,etsy,commercial) {
   const referenceMonth=etsy?.fetchedAt?.slice(0,7);
   const timely=!referenceMonth || [...periods][0]===referenceMonth;
   const recommended = demand>0 && comparablePeriod && timely && independent>=2 && direct.length>=2;
-  const exemplar = [...direct].sort((a,b)=>Number(identity(a.title)===clean(direction.phrase))-Number(identity(b.title)===clean(direction.phrase)) || a.title.length-b.title.length)[0];
+  const exemplar = [...direct].sort((a,b)=>Number(!usable(identity(a.title)))-Number(!usable(identity(b.title))) ||
+    Number(identity(a.title)===clean(direction.phrase))-Number(identity(b.title)===clean(direction.phrase)) || a.title.length-b.title.length)[0];
   return {direction, etsy:{direct,adjacent,date:etsy?.fetchedAt,shops:new Set(direct.map(r=>r.shopId).filter(Boolean)).size}, commercial:{records,comparable,populated,active,independent,shops:shops(populated),sampled:commercial?.productStatus==='sampled'||records.length>0}, prices,sales,exact,demand,recommended,comparablePeriod,exemplar,
     topShop,sampleTotal,timely,characteristics:extractListingCharacteristics(exemplar),audience:`buyers seeking ${direction.phrase}`};
 }

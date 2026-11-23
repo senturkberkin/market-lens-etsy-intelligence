@@ -59,6 +59,20 @@ async function begin(value){
         markets=selectResearchBatch(seed,discoverProductMarkets(seed,rows));
       }catch{sources.push(`${probe} unavailable`);}
     }
+    // When a requested format yields no market, inspect downloads for the
+    // same subject. Keep the broader query and its products visible as such.
+    const subject=seed.replace(/\b(?:digital|download|printable|template|editable|pdf)\b/gi,' ').replace(/\s+/g,' ').trim();
+    if(!markets.length && parseResearchInput(value)?.type==='keyword' && subject.length>=2 && subject!==seed && subject.length<=64){
+      const query=subject+' digital download';
+      if(!sources.some(s=>s.startsWith(query+' ('))){
+        try{
+          const other=await search(query);
+          sources.push(`${query} · related formats (${other.sample.length} listings, ${other.fetchedAt})`);
+          const adjacent=selectResearchBatch(subject,discoverProductMarkets(subject,other.sample));
+          if(adjacent.length){markets=adjacent;rows=rows.concat(other.sample);}
+        }catch{sources.push(`${query} unavailable`);}
+      }
+    }
     const paid=markets;
     if(!markets.length)markets=selectResearchBatch(seed,discoverProductMarkets(seed,rows,1,shopScope));
     session={data:{...data,sample:rows},markets,paid,sources};
