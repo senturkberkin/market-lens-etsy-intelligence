@@ -36,7 +36,7 @@ export function renderDecision(decision,items){
     detail?.value?.startsWith('for ')||detail?.value?.startsWith('to ')?' '+detail.value:'';
   const kind=['personalized','editable'].includes(detail?.value)?detail.value+' ':'';
   const configuration=`Prototype one ${kind}edition of “${a.direction.phrase}”${use}.`+
-    (format?` Supply it in ${format.value} format.`:'')+
+    (format?(/^(?:CANVA|PROCREATE|NOTION|EXCEL|GOOGLE SHEETS|GOODNOTES)$/i.test(format.value)?` Build it for ${format.value}.`:` Supply it in ${format.value} format.`):'')+
     (variant?` Focus the sample on “${variant.value}”.`:'');
   const measured=items.some(i=>i.exact||i.commercial.sampled);
   const rationale=measured?
@@ -55,7 +55,7 @@ export function renderDecision(decision,items){
   <h2>${decision.status==='supported'?'Product to prototype':'Provisional research priority'} · ${esc(a.direction.phrase)}</h2>
   <p><b>${a.direction.componentOnly&&!a.exemplar?'Standalone concept to validate':'Proposed first edition'}</b> · ${esc(configuration)}</p>
   ${facts.length?`<p>${facts.map(f=>esc(f.value)+' appears in '+f.ids.size+' direct listings across '+f.shops.size+' shops').join('. ')}.</p>`:''}
-  <p>${rationale} ${decision.compared?'This market leads on at least one of demand, active sellers, median sales or seller diversification and matches or exceeds the other supported options on each.':decision.status==='multiple'?'Commercial preference remains unresolved.':''}</p>
+  <p>${rationale} ${decision.compared?'This market leads on at least one of demand, active sellers, median sales or seller diversification and matches or exceeds the other supported options on each.':decision.status==='multiple'?'Commercial preference remains unresolved.':''} ${a.recommended&&facts.length?'Commercial measurements apply to the market query. The proposed edition still needs buyer testing.':''}</p>
   <p><b>Next action</b> · ${next}</p></section>
   <h2>Market comparison</h2><div class="table-wrap"><table><thead><tr>${['Market','Monthly searches','3m / annual change','Measured / direct Alura listings','Shops with activity','Recent estimates · median / Q3','Etsy price · median (IQR)','Evidence status'].map(v=>`<th>${v}</th>`).join('')}</tr></thead><tbody>
   ${items.map(i=>`<tr><td>${esc(i.direction.phrase)}</td><td>${num(i.demand)}</td><td>${trend(i.exact?.change3m)} / ${trend(i.exact?.changeYear)}</td><td>${i.commercial.sampled?i.commercial.populated.length+' / '+i.commercial.comparable.length:'—'}</td><td>${i.commercial.sampled?i.commercial.independent:'—'}</td><td>${num(i.sales.median)} / ${num(i.sales.q3)}</td><td>${prices(i)}</td><td>${i.recommended?'Commercial support':i.commercial.sampled||i.exact?'Partial commercial evidence':'Etsy supply only'}</td></tr>`).join('')}

@@ -132,8 +132,17 @@ function sharedDesign(phrase,rows){
 export function selectResearchBatch(seed,markets,max=3) {
   const selected = [];
   const theme=terms(seed.replace(delivery,''));
+  // Distinguish a theme used to modify several actual deliverables from
+  // an established product name. A scene or title ending with that theme
+  // does not itself identify another deliverable.
+  const namedProducts=markets.filter(m=>!m.isSeed && !packaging.has(terms(m.phrase).at(-1)) &&
+    terms(m.phrase).at(-1)!==theme.at(-1) && terms(m.phrase).slice(0,theme.length).join(' ')===theme.join(' '));
   const viable=markets.filter(m=>{
     const words=terms(m.phrase);
+    const identityWords=words.filter(w=>!packaging.has(w));
+    if(!m.isSeed && namedProducts.length && identityWords.at(-1)===theme.at(-1) &&
+      !m.design?.variant && !m.design?.detail && (theme.length===1 || !m.design?.format))return false;
+    if(packaging.has(words.at(-1)) && identityWords.at(-1)===theme.at(-1) && namedProducts.length)return false;
     // Adding a container/encoding alone leaves the proposed product undefined.
     const extra=words.filter(t=>!theme.includes(t));
     if(extra.length && extra.every(t=>/^\d+$/.test(t)||packaging.has(t)))return false;
