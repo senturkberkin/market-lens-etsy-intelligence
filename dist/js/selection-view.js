@@ -30,20 +30,19 @@ export function renderDecision(decision,items){
   const a=decision.winner;
   if(!a)return '<h2>Blocked research</h2><p>The retrieved listings did not identify a relevant downloadable product by title. No commercial request is proposed.</p>';
   const example=a.exemplar;
-  const purpose=a.characteristics?.functions[0]?.value || a.characteristics?.audiences[0]?.value;
+  const purpose=a.characteristics?.audiences[0]?.value;
   const detail=example.title.split(/[,|;:–—]/).map(t=>t.trim()).filter(Boolean);
   const formats=[...new Set((example.title+' '+(example.tags||[]).join(' ')).match(/\b(?:pdf|svg|png|jpe?g|xlsx|dxf|stl|epub|psd|procreate|canva|goodnotes|notion|google sheets|excel)\b/gi)?.map(v=>v.toUpperCase())||[])];
-  const feature=a.characteristics?.features.find(f=>f.field==='description')?.value;
-  const configuration=[formats.join(' / ') || 'Digital download', feature || detail[1] || detail[0]].filter(Boolean).join(' · ');
+  const configuration=[detail[0],formats.join(' / ') || 'Digital download'].join(' · ');
   const reason=a.recommended?`${num(a.demand)} estimated monthly searches and ${a.commercial.independent} identified shops with positive recent estimates.`:
-    `${a.etsy.direct.length} comparable Etsy download${a.etsy.direct.length===1?'':'s'} give you concrete products to inspect.`;
+    `${a.etsy.direct.length} comparable Etsy download${a.etsy.direct.length===1?'':'s'} across ${num(a.etsy.shops)} identified shops. Free research prioritizes breadth of seller evidence.`;
   return `<section class="recommendation"><p class="eyebrow">${labels[decision.status]}</p>
   <h2>${esc(a.direction.phrase)}</h2><p><b>First product to investigate</b> · ${esc(configuration)}.</p>
-  <p>${purpose?`Advertised use or audience · ${esc(purpose)}.`:'Buying purpose needs buyer validation.'} Observed example · ${source(example)}.</p>
+  <p>${purpose?`Seller-described audience · ${esc(purpose)}.`:'Buying purpose needs buyer validation.'} Use the observed format to prototype an original version. Source · ${source(example)}.</p>
   <p>${reason} ${decision.status==='multiple'?'Start here for validation. The comparison leaves the commercial leader unresolved.':''}</p>
   <p><b>Next action</b> · ${a.recommended?'Prototype one original example and test purchase intent at the observed asking prices.':a.demand==null?'Check exact search interest for “'+esc(a.direction.phrase)+'” and recent activity among sellers offering the same deliverable.':'Check recent sales for comparable downloads from a second independent shop before prototyping.'}</p></section>
   <h2>Market comparison</h2><div class="table-wrap"><table><thead><tr>${['Market','Monthly searches','3m / annual change','Measured / direct Alura listings','Shops with activity','Recent estimates · median / Q3','Etsy price · median (IQR)','Evidence status'].map(v=>`<th>${v}</th>`).join('')}</tr></thead><tbody>
-  ${items.map(i=>`<tr><td>${esc(i.direction.phrase)}</td><td>${num(i.demand)}</td><td>${trend(i.exact?.change3m)} / ${trend(i.exact?.changeYear)}</td><td>${i.commercial.populated.length} / ${i.commercial.comparable.length}</td><td>${i.commercial.independent}</td><td>${num(i.sales.median)} / ${num(i.sales.q3)}</td><td>${prices(i)}</td><td>${i.recommended?'Commercial support':i.commercial.records.length?'Partial commercial evidence':'Etsy supply only'}</td></tr>`).join('')}
+  ${items.map(i=>`<tr><td>${esc(i.direction.phrase)}</td><td>${num(i.demand)}</td><td>${trend(i.exact?.change3m)} / ${trend(i.exact?.changeYear)}</td><td>${i.commercial.sampled?i.commercial.populated.length+' / '+i.commercial.comparable.length:'—'}</td><td>${i.commercial.sampled?i.commercial.independent:'—'}</td><td>${num(i.sales.median)} / ${num(i.sales.q3)}</td><td>${prices(i)}</td><td>${i.recommended?'Commercial support':i.commercial.sampled||i.exact?'Partial commercial evidence':'Etsy supply only'}</td></tr>`).join('')}
   </tbody></table></div><p class="muted">— means unmeasured. Sales statistics describe direct products in the sales-ranked sample. Exact search demand and actual buyer conversion are separate measurements.</p>
   ${items.map(competitors).join('')}`;
 }

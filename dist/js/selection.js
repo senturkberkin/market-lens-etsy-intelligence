@@ -16,7 +16,9 @@ function identity(title) {
 }
 function usable(phrase) {
   const words = terms(phrase);
-  return words.length >= 2 && words.length <= 8 && phrase.length <= 80 && !prose.test(phrase);
+  return words.length >= 2 && words.length <= 8 && phrase.length <= 80 && !prose.test(phrase) &&
+    /^[\p{L}\p{N}][\p{L}\p{N} '&/-]*$/u.test(phrase) && !/\b(?:only|copyright|reserved|listing|item)\b/i.test(phrase) &&
+    !/\b(?:files?|edition|only)$/i.test(phrase);
 }
 // Require the product noun at the end of the primary deliverable. A mention
 // in tags or a later clause alone cannot identify the item being sold.
@@ -38,36 +40,44 @@ export function classifyComparable(phrase, listing) {
   return listingRelevance(phrase, listing) === 'irrelevant' ? 'irrelevant' : 'uncertain';
 }
 
-export function discoverProductMarkets(seed, listings, minimum = 2) {
-  const rows = unique(listings || []).filter(r => r.listingType === 'download' && listingRelevance(seed,r) !== 'irrelevant');
+export function discoverProductMarkets(seed, listings, minimum = 2, shopScope = false) {
+  const rows = unique(listings || []).filter(r => r.listingType === 'download' && (shopScope || listingRelevance(seed,r) !== 'irrelevant'));
   const phrases = new Set([clean(seed)]);
   const endings=new Map();
   for (const row of rows) {
     const head = identity(row.title);
-    if(listingRelevance(seed,{title:row.title})!=='irrelevant' && !terms(head).some((t,i,all)=>all.indexOf(t)!==i)){
+    if((shopScope || listingRelevance(seed,{title:row.title})!=='irrelevant') && !terms(head).some((t,i,all)=>all.indexOf(t)!==i)){
       phrases.add(head);
       const words=head.split(/\s+/);
       for(let size=2;size<=Math.min(6,words.length);size++){
         const ending=words.slice(-size).join(' ');
         if(!terms(ending).some(t=>terms(seed).includes(t)))continue;
-        endings.set(ending,(endings.get(ending)||0)+1);
+        if(!endings.has(ending))endings.set(ending,new Set());
+        endings.get(ending).add(head);
       }
     }
     for (const tag of row.tags || []) {
       if (listingRelevance(seed,{title:tag}) !== 'irrelevant' && classifyComparable(tag,row) === 'direct') phrases.add(clean(tag));
     }
   }
-  for(const [phrase,count] of endings)if(count>=2)phrases.add(phrase);
+  for(const [phrase,heads] of endings)if(heads.size>=2)phrases.add(phrase);
   const markets = [];
   for (const phrase of phrases) {
     if (!usable(phrase) || /^(?:and|with|for|of|the)\b/.test(phrase)) continue;
+    const theme=clean(seed.replace(delivery,''));
+    if(!shopScope && theme && listingRelevance(theme,{title:phrase})==='irrelevant') {
+      // Permit a full product name from a relevant title as an exploratory
+      // lead. Partial suffixes and generic tags cannot use this exception.
+      if(minimum!==1 || !rows.some(r=>identity(r.title)===phrase && listingRelevance(theme,{title:r.title})!=='irrelevant'))continue;
+    }
     const evidence = rows.filter(row => classifyComparable(phrase,row) === 'direct');
     if (evidence.length < minimum) continue;
     const listingIds = evidence.map(r => String(r.id)).sort();
     markets.push({phrase, listingIds, listings:evidence, isSeed:key(phrase)===key(seed),
       sourceListings:evidence.slice(0,4), reason:`${listingIds.length} downloadable listings describe this product in their titles.`});
   }
-  return markets.sort((a,b) => b.listings.length-a.listings.length || a.phrase.length-b.phrase.length || a.phrase.localeCompare(b.phrase));
+  const shops=m=>new Set(m.listings.map(r=>r.shopId).filter(Boolean)).size;
+  return markets.sort((a,b) => shops(b)-shops(a) || b.listings.length-a.listings.length || a.phrase.length-b.phrase.length || a.phrase.localeCompare(b.phrase));
 }
 
 export function selectResearchBatch(seed,markets,max=3) {
@@ -95,7 +105,8 @@ export function distribution(values) {
 
 export function assessDirection(direction,etsy,commercial) {
   const sample = unique([...(direction.listings || []), ...(etsy?.sample || [])]);
-  const direct = sample.filter(row=>classifyComparable(direction.phrase,row)==='direct');
+  const scoped = direction.listingIds ? sample.filter(row=>direction.listingIds.includes(String(row.id))) : sample;
+  const direct = scoped.filter(row=>classifyComparable(direction.phrase,row)==='direct');
   const adjacent = sample.filter(row=>classifyComparable(direction.phrase,row)==='adjacent');
   const byId = new Map(sample.map(row=>[String(row.id),row]));
   const records = unique(commercial?.products || []).map(row=>{
@@ -128,16 +139,21 @@ export function assessDirection(direction,etsy,commercial) {
   const timely=!referenceMonth || [...periods][0]===referenceMonth;
   const recommended = demand>0 && comparablePeriod && timely && independent>=2 && direct.length>=2;
   const exemplar = [...direct].sort((a,b)=>Number(identity(a.title)===clean(direction.phrase))-Number(identity(b.title)===clean(direction.phrase)) || a.title.length-b.title.length)[0];
-  return {direction, etsy:{direct,adjacent,date:etsy?.fetchedAt}, commercial:{records,comparable,populated,active,independent,shops:shops(populated)}, prices,sales,exact,demand,recommended,comparablePeriod,exemplar,
+  return {direction, etsy:{direct,adjacent,date:etsy?.fetchedAt,shops:new Set(direct.map(r=>r.shopId).filter(Boolean)).size}, commercial:{records,comparable,populated,active,independent,shops:shops(populated),sampled:commercial?.productStatus==='sampled'||records.length>0}, prices,sales,exact,demand,recommended,comparablePeriod,exemplar,
     topShop,sampleTotal,timely,characteristics:extractListingCharacteristics(exemplar),audience:`buyers seeking ${direction.phrase}`};
 }
 
 export function chooseProductTarget(assessments) {
   const ordered = assessments.filter(a=>a.exemplar).sort((a,b)=>Number(b.recommended)-Number(a.recommended) ||
-    b.commercial.independent-a.commercial.independent || b.etsy.direct.length-a.etsy.direct.length || a.direction.phrase.localeCompare(b.direction.phrase));
+    b.commercial.independent-a.commercial.independent || b.etsy.shops-a.etsy.shops || b.etsy.direct.length-a.etsy.direct.length || a.direction.phrase.localeCompare(b.direction.phrase));
   const winner=ordered[0];
   const supported=ordered.filter(a=>a.recommended);
   const sameMonth = supported.every(a=>a.commercial.populated[0]?.as_of?.slice(0,7)===winner?.commercial.populated[0]?.as_of?.slice(0,7));
-  const decisive=winner?.recommended && (supported.length===1 || sameMonth && winner.commercial.independent>supported[1].commercial.independent);
+  const decisive=winner?.recommended && (supported.length===1 || sameMonth && supported.slice(1).every(other=>
+    winner.commercial.independent>other.commercial.independent &&
+    winner.sales.median>=other.sales.median &&
+    winner.commercial.populated.length===other.commercial.populated.length &&
+    winner.commercial.populated.length===winner.commercial.comparable.length &&
+    other.commercial.populated.length===other.commercial.comparable.length));
   return {status:decisive?'supported':ordered.length>1?'multiple':winner?'preliminary':'blocked',winner,alternatives:ordered.slice(1)};
 }

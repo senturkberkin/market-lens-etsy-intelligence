@@ -60,6 +60,7 @@ export default async function handler(req,res){
   if(!requireVercelAccess(req,res))return;
   const body=req.body&&typeof req.body==='object'?req.body:{};
   if(body.approved!==true)return res.status(400).json({error:'Explicit approval is required before Alura credits are used.'});
-  try{return res.status(200).json(await runCommercialResearch(body.directions,{apiKey:process.env.ALURA_API_KEY,maxBudget:Number.isSafeInteger(body.maxBudget)?body.maxBudget:33}));}
+  if(!Number.isSafeInteger(body.maxBudget)||body.maxBudget<1||body.maxBudget>33)return res.status(400).json({error:'Provide the approved credit limit (1–33).'});
+  try{return res.status(200).json(await runCommercialResearch(body.directions,{apiKey:process.env.ALURA_API_KEY,maxBudget:body.maxBudget}));}
   catch(error){return res.status(502).json({error:error instanceof Error?error.message:'Commercial research is unavailable.'});}
 }

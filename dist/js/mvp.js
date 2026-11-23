@@ -29,7 +29,12 @@ function plan(markets){
 
 function show(commercial){
   const byPhrase=new Map((commercial?.results || []).map(r=>[r.direction,r]));
-  const assessments=session.markets.map(m=>assessDirection(m,session.data,byPhrase.get(m.phrase)));
+  const assessments=session.markets.map(m=>{
+    const focused=session.focused?.get(m.phrase);
+    if(!focused)return assessDirection(m,session.data,byPhrase.get(m.phrase));
+    const listingIds=[...new Set([...m.listingIds,...focused.sample.map(r=>String(r.id))])];
+    return assessDirection({...m,listingIds},focused,byPhrase.get(m.phrase));
+  });
   result.innerHTML=renderDecision(chooseProductTarget(assessments),assessments)+
     `<p class="source">Etsy searches · ${session.sources.map(esc).join(' · ')}</p>`+
     (commercial?.interrupted?'<p class="notice">Alura interrupted the batch. Completed observations are included.</p>':'')+
@@ -43,7 +48,8 @@ async function begin(value){
     const data=await search(value), seed=data.keyword;
     const sources=[`${seed} (${data.sample.length} listings, ${data.fetchedAt})`];
     let rows=[...data.sample];
-    let markets=selectResearchBatch(seed,discoverProductMarkets(seed,rows));
+    const shopScope=data.sourceContext?.type==='shop';
+    let markets=selectResearchBatch(seed,discoverProductMarkets(seed,rows,2,shopScope));
     if(parseResearchInput(value)?.type==='keyword' && (markets.length<2) && seed.length<=64){
       const probe=/\bdigital\b/i.test(seed)?`${seed} download`:`${seed} digital download`;
       try{
@@ -54,7 +60,7 @@ async function begin(value){
       }catch{sources.push(`${probe} unavailable`);}
     }
     const paid=markets;
-    if(!markets.length)markets=selectResearchBatch(seed,discoverProductMarkets(seed,rows,1));
+    if(!markets.length)markets=selectResearchBatch(seed,discoverProductMarkets(seed,rows,1,shopScope));
     session={data:{...data,sample:rows},markets,paid,sources};
     show();
     history.replaceState(null,'',`?q=${encodeURIComponent(value)}`);
@@ -68,6 +74,15 @@ async function approve(button){
   form.querySelector('button').disabled=true;
   const directions=session.paid.map(row=>row.phrase);
   try{
+    session.focused=new Map();
+    for(const phrase of directions){
+      if(phrase===session.data.keyword)continue;
+      try{
+        const data=await search(phrase);
+        session.focused.set(phrase,data);
+        session.sources.push(`${phrase} (${data.sample.length} listings, ${data.fetchedAt})`);
+      }catch{session.sources.push(`${phrase} focused sample unavailable`);}
+    }
     const response=await fetch(new URL('/api/commercial-research',base),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({approved:true,directions,maxBudget:directions.length*11})});
     const data=await response.json();
     if(!response.ok)throw new Error(data.error || 'Commercial research failed.');
