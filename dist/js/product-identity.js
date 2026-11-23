@@ -52,7 +52,7 @@ function useClaim(row,core) {
   const id=listingIdentity(row);
   const coreWords=useWords(core).map(spelling);
   const explicit=id.purposes.find(p=>p.field==='title' && useWords(p.value).length>=2 &&
-    /^(?:\w+ing\s|.*\bto\b)/i.test(p.value+' '+p.quote) &&
+    (/^\w+ing\s/i.test(p.value) || normalize(p.quote).endsWith(' to '+p.value)) &&
     useWords(p.value).some(w=>!coreWords.includes(spelling(w))));
   if(explicit)return explicit;
   // A qualified occupational/activity phrase can distinguish two uses even

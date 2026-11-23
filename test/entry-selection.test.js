@@ -41,13 +41,23 @@ test('the same form for different uses keeps demand and recent estimates in sepa
 });
 
 test('co-advertised names across shops can identify a new comparable without transferring another query’s demand',()=>{
-  const rows=[listing(1,'Astrolabe sight register | Astrolabe sight ledger',{tags:['astrolabe sight ledger']}),
-    listing(2,'Astrolabe sight register | Astrolabe sight ledger',{tags:['astrolabe sight ledger']}),
+  const rows=[listing(1,'Astrolabe sight register | also called Astrolabe sight ledger',{tags:['astrolabe sight ledger']}),
+    listing(2,'Astrolabe sight register | aka Astrolabe sight ledger',{tags:['astrolabe sight ledger']}),
     listing(3,'Astrolabe sight ledger')];
   const batch=select('astrolabe',rows);
   assert.equal(batch.length,1);
   assert.equal(batch[0].listingIds.length,3);
   assert.equal(assessDirection(batch[0],{sample:rows}).etsy.direct.length,3);
+});
+
+test('a co-advertised tool is not merged into the main sold item',()=>{
+  const rows=[1,2].map(i=>listing(i,'Astrolabe sight register | Astrolabe calibration gauge',
+    {tags:['astrolabe calibration gauge']}));
+  rows.push(listing(3,'Astrolabe calibration gauge'));
+  const register=select('astrolabe',rows)[0];
+  assert.deepEqual(register.listingIds,['1','2']);
+  const report=assessDirection(register,{sample:rows},{products:[{...rows[2],sales:{est_last_month:80}}]});
+  assert.equal(report.sales.median,null);
 });
 
 test('a spelling variant or isolated activity word in alternate clauses cannot become a paid use',()=>{

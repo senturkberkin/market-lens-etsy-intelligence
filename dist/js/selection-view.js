@@ -40,13 +40,12 @@ export function renderDecision(decision,items){
       ${items.map(competitors).join('')}`;
   }
   const facts=[a.design.variant,a.design.detail,a.design.format].filter(Boolean);
-  const {format,detail,variant}=a.design;
+  const {format,detail}=a.design;
   const use=detail?.value==='print at home'?' for home printing':
     detail?.value?.startsWith('for ')||detail?.value?.startsWith('to ')?' '+detail.value:'';
   const kind=['personalized','editable'].includes(detail?.value)?detail.value+' ':'';
   const configuration=`One ${kind}edition of “${a.direction.phrase}”${use}.`+
-    (format?(/^(?:CANVA|PROCREATE|NOTION|EXCEL|GOOGLE SHEETS|GOODNOTES)$/i.test(format.value)?` Build it for ${format.value}.`:` Supply it in ${format.value} format.`):'')+
-    (variant?` Focus the sample on “${variant.value}”.`:'');
+    (format?(/^(?:CANVA|PROCREATE|NOTION|EXCEL|GOOGLE SHEETS|GOODNOTES)$/i.test(format.value)?` Build it for ${format.value}.`:` Supply it in ${format.value} format.`):'');
   const measured=items.some(i=>i.exact||i.commercial.sampled);
   const {edge,purpose,segment}=a.entry;
   const useCase=[segment,purpose].filter(Boolean).join(' · ');
@@ -65,6 +64,7 @@ export function renderDecision(decision,items){
     audience:`Test an edition explicitly written for ${edge.value} against a general edition.`,
     use:`Test a version organized around one task (“${edge.value}”) against a general-purpose version.`,
     feature:`Test a small edition built around “${edge.value}” against a broader package at the same price.`,
+    compatibility:`Test a version of the ${a.scope.core} optimized for use with ${edge.value} against the general edition at the same asking price.`,
     configuration:`For the ${a.scope.core}, test ${configurations[edge.value]||'an edition built around '+edge.value} against a basic edition at the same asking price.`
   }[edge.kind]:null;
   const rationale=measured?
@@ -79,12 +79,13 @@ export function renderDecision(decision,items){
     !a.timely||!a.comparablePeriod?'Compare direct sellers using a common recent measurement period.':
     a.commercial.independent<2?'Look for a second independent seller with a positive estimate for this deliverable.':
     'Test buyer preference between the supported configurations before choosing a prototype.';
+  const mainPrice=Object.entries(a.prices).sort(([,a],[,b])=>b.values.length-a.values.length)[0];
   return `<section class="recommendation"><p class="eyebrow">${labels[decision.status]}</p>
   <h2>${decision.status==='supported'?'Product to prototype':'Provisional research priority'} · ${esc(a.direction.phrase)}</h2>
   <p><b>${a.direction.componentOnly&&!a.exemplar?'Standalone concept to validate':'Proposed first edition'}</b> · ${esc(configuration)}</p>
   <p><b>Buyer and use</b> · ${esc(useCase||'Sellers identify the deliverable. A specific buyer or use has yet to be corroborated.')}</p>
   <p><b>Why investigate</b> · ${rationale} ${decision.compared?'This direction leads the measured alternatives on at least one of search interest, active shops, median sales or seller diversification and matches them on the others.':decision.status==='multiple'?'Commercial preference remains unresolved.':''}</p>
-  <p><b>Competition</b> · ${a.etsy.direct.length} direct Etsy listings across ${a.etsy.shops} identified shops. ${Object.keys(a.prices).length?'Median asking price and middle half · '+prices(a)+'.':''} ${a.sampleTotal?'Largest identified seller · '+num(a.topShop)+' of '+num(a.sampleTotal)+' estimated sales in the sample.':''}</p>
+  <p><b>Competition</b> · ${a.etsy.direct.length} direct Etsy listings across ${a.etsy.shops} identified shops. ${mainPrice?'Median asking price for '+mainPrice[1].values.length+' listings priced in '+esc(mainPrice[0])+' · '+num(mainPrice[1].median)+' (middle half '+num(mainPrice[1].q1)+'–'+num(mainPrice[1].q3)+').':''} ${a.topShop?'Largest identified seller · '+num(a.topShop)+' of '+num(a.sampleTotal)+' estimated sales in the sample.':''}</p>
   <p><b>Possible edge</b> · ${positioning?esc(positioning)+' The observed starting point is “'+esc(edge.value)+'” in '+edge.witnesses.size+' of '+a.etsy.direct.length+' direct listings across '+edge.shops.size+' shops.':'The sample has yet to establish a repeatable positioning difference. Validate this deliverable before designing an edition.'}</p>
   <p><b>Main risk</b> · ${measured?'Sales-ranked samples favor observed sellers with stored estimates. The chance of a new seller making sales is unknown.':'Search demand and recent sales for this exact product are unmeasured.'}</p>
   <p><b>Next action</b> · ${next}</p></section>

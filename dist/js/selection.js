@@ -102,8 +102,10 @@ export function discoverProductMarkets(seed, listings, minimum = 2, shopScope = 
     for(const row of evidence){
       if(!row.shopId)continue;
       for(const part of clauses(row.title).slice(1)){
-        const alias=identity(part);
+        const equivalence=/^(?:also (?:called|known as)|aka)\s+/i;
+        const alias=identity(part.replace(equivalence,''));
         if(!usable(alias) || alias===phrase || listingRelevance(seed,{title:alias})==='irrelevant' ||
+          (terms(alias).at(-1)!==terms(phrase).at(-1) && !equivalence.test(part)) ||
           /\b(?:included?|includes|with|bundle of|featuring)\b/i.test(part) ||
           !(row.tags||[]).some(tag=>key(tag)===key(alias)))continue;
         if(!aliases.has(alias))aliases.set(alias,new Set());
@@ -120,7 +122,7 @@ export function discoverProductMarkets(seed, listings, minimum = 2, shopScope = 
         sourceListings:scope.members.slice(0,4)});
     }
   }
-  if(!shopScope && usable(clean(seed)) && !markets.some(m=>listingRelevance(seed,{title:m.phrase})!=='irrelevant')){
+  if(!shopScope && usable(clean(seed)) && !markets.some(m=>listingRelevance(seed,{title:m.identity?.core||m.phrase})!=='irrelevant')){
     const mentions=rows.filter(r=>clauses(r.title).slice(1).some(part=>listingRelevance(seed,{title:part})==='exact') ||
       (r.tags||[]).some(tag=>key(tag)===key(seed)));
     if(mentions.length>=minimum){
@@ -177,8 +179,12 @@ function entryEvidence(scope,rows) {
   const claims=new Map();
   for(const row of rows){
     const product=listingIdentity(row);
+    const explicitFeatures=product.features.filter(f=>f.field==='description' && /\b(?:contains?|includes?|featur(?:es|ing)|comes with)\b/i.test(f.quote) &&
+      !/\bwith\b/i.test(f.quote.replace(/comes with/i,'')));
+    const tools=product.features.filter(f=>f.field==='description' &&
+      /\b(?:compatible with|works with|use with)\b/i.test(f.quote));
     for(const [kind,observations] of Object.entries({use:product.purposes,audience:product.segments,
-      feature:product.features.filter(f=>f.field!=='tag'),configuration:product.functionality})){
+      feature:explicitFeatures,compatibility:tools,configuration:product.functionality})){
       for(const obs of observations){
         const value=clean(obs.value);
         if(!value || value.length>70 || prose.test(value) || !row.shopId)continue;
@@ -193,11 +199,13 @@ function entryEvidence(scope,rows) {
   // A feature that some sellers explicitly advertise gives a falsifiable
   // positioning test. Silence in other listings says nothing about inclusion.
   const contrast=c=>c.witnesses.size<rows.length;
-  const priority={feature:0,use:1,audience:2,configuration:3};
+  const priority={feature:0,use:1,compatibility:2,audience:3,configuration:4};
   repeated.sort((a,b)=>Number(contrast(b))-Number(contrast(a)) ||
     priority[a.kind]-priority[b.kind] || b.shops.size-a.shops.size || a.value.localeCompare(b.value));
-  return {edge:repeated[0]||null,purpose:scope.purpose || repeated.find(c=>c.kind==='use')?.value,
-    segment:repeated.find(c=>c.kind==='audience')?.value};
+  const edge=repeated[0];
+  const joint=kind=>repeated.find(c=>c.kind===kind && new Set(rows.filter(row=>
+    c.witnesses.has(String(row.id)) && edge.witnesses.has(String(row.id))).map(row=>row.shopId)).size>=2);
+  return {edge:edge||null,purpose:scope.purpose || joint('use')?.value,segment:joint('audience')?.value};
 }
 
 export function selectResearchBatch(seed,markets,max=3) {
